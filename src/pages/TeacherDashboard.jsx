@@ -71,19 +71,28 @@ export default function TeacherDashboard() {
 
   useEffect(() => { if (user) loadQuizzes() }, [user])
 
+  // Live results: re-fetch the open quiz's students/questions every 8s.
+  useEffect(() => {
+    if (!active) return
+    const id = setInterval(() => { reloadData(active) }, 8000)
+    return () => clearInterval(id)
+  }, [active?.id]) // eslint-disable-line
+
   async function loadQuizzes() {
     const { data } = await supabase.from('quizzes').select('*').order('created_at', { ascending: false })
     setQuizzes(data || [])
   }
-  async function openQuiz(q) {
-    setActive(q); setTab('questions')
+  async function reloadData(q) {
     const [{ data: qs }, { data: st }] = await Promise.all([
       supabase.from('questions').select('*').eq('quiz_id', q.id).order('created_at'),
       supabase.from('students').select('*').eq('quiz_id', q.id).order('created_at'),
     ])
     setQuestions(qs || []); setStudents(st || [])
   }
-  async function refreshActive() { if (active) await openQuiz(active) }
+  async function openQuiz(q) {
+    setActive(q); setTab('questions'); await reloadData(q)
+  }
+  async function refreshActive() { if (active) await reloadData(active) }
 
   async function logout() { await supabase.auth.signOut(); nav('/teacher/login') }
 
@@ -384,15 +393,20 @@ function ResultsTab({ students, onChange }) {
     try { await rpc('teacher_reallow_student', { p_student_id: id }); onChange() }
     catch (e) { alert(e.message) }
   }
-  if (!students.length) return <p style={{ color: '#757064' }}>No students have started yet.</p>
-
   const badge = (s) => {
     const map = { submitted: '#1f9d55', in_progress: '#e5a72d', registered: '#757064', blocked: '#e5322d' }
     return <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 11, color: '#fff', background: map[s.status] || '#757064', padding: '2px 8px' }}>{s.status.toUpperCase()}</span>
   }
 
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <div>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+      <span className="label">{students.length} student(s) · updates automatically every few seconds</span>
+      <button className="btn" style={{ padding: '8px 14px' }} onClick={onChange}>↻ REFRESH NOW</button>
+    </div>
+    {!students.length
+      ? <p style={{ color: '#757064' }}>No students have started yet.</p>
+      : <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
         <thead>
           <tr style={{ textAlign: 'left', borderBottom: '2px solid #131311' }}>
@@ -422,6 +436,7 @@ function ResultsTab({ students, onChange }) {
           ))}
         </tbody>
       </table>
+    </div>}
     </div>
   )
 }

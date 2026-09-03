@@ -44,3 +44,16 @@ body {
 .field:focus { outline: 2px solid #e5322d; outline-offset: 1px; }
 
 .label { font-family: 'Space Mono', monospace; font-size: 12px; letter-spacing: 1px; color: #757064; text-transform: uppercase; }
+
+/* visible keyboard focus everywhere */
+:focus-visible { outline: 2px solid #e5322d; outline-offset: 2px; }
+
+/* toast confirmation */
+.toast {
+  position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+  background: #131311; color: #f2f1ec; padding: 12px 20px;
+  font-family: 'Space Mono', monospace; font-size: 13px; letter-spacing: .5px;
+  border: 2px solid #131311; z-index: 200; box-shadow: 4px 4px 0 rgba(19,19,17,.2);
+}
+.toast.ok { border-color: #1f9d55; }
+.toast.err { border-color: #e5322d; }

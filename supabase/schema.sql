@@ -16,6 +16,8 @@ create table if not exists quizzes (
   questions_per_student int  not null default 1,
   duration_minutes      int  not null default 30,
   allowed_types         text[] not null default '{mcq,text,code}',
+  pass_score            int,                 -- passing percent (null = no pass/fail)
+  show_results          boolean not null default false,
   is_open               boolean not null default true,
   created_at            timestamptz not null default now()
 );
@@ -49,9 +51,11 @@ create table if not exists students (
   started_at     timestamptz,
   submitted_at   timestamptz,
   submit_reason  text,
-  created_at     timestamptz not null default now(),
-  unique (quiz_id, email)
+  created_at     timestamptz not null default now()
 );
+-- Identity by Student ID: one ID can take a quiz once (reusable across quizzes).
+create unique index if not exists students_quiz_sid_idx
+  on students (quiz_id, lower(student_id_txt)) where student_id_txt is not null;
 
 create table if not exists assignments (
   id          uuid primary key default gen_random_uuid(),
@@ -122,7 +126,11 @@ declare
   v_student students;
   v_needed int;
   v_available int;
+  v_sid text;
 begin
+  v_sid := nullif(trim(p_student_id), '');
+  if v_sid is null then return json_build_object('error','student_id_required'); end if;
+
   select * into v_quiz from quizzes where id = p_quiz_id;
   if v_quiz.id is null then
     return json_build_object('error','quiz_not_found');
@@ -132,7 +140,7 @@ begin
   end if;
 
   select * into v_student from students
-    where quiz_id = p_quiz_id and lower(email) = lower(p_email);
+    where quiz_id = p_quiz_id and lower(student_id_txt) = lower(v_sid);
 
   if v_student.id is not null then
     if v_student.status = 'submitted' then
@@ -144,7 +152,7 @@ begin
     -- reuse existing registration
   else
     insert into students (quiz_id, name, email, student_id_txt)
-      values (p_quiz_id, p_name, p_email, nullif(p_student_id,''))
+      values (p_quiz_id, p_name, p_email, v_sid)
       returning * into v_student;
   end if;
 
@@ -306,6 +314,7 @@ begin
     'teacher_email', v_teacher_email,
     'quiz_title', v_quiz.title,
     'score', v_score, 'total_points', v_total,
+    'show_results', v_quiz.show_results, 'pass_score', v_quiz.pass_score,
     'camera_url', v_student.camera_url,
     'screen_url', v_student.screen_url);
 end $$;

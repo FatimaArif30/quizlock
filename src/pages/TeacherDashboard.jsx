@@ -29,16 +29,17 @@ function parseCsv(text) {
 
 function csvToQuestions(text) {
   const rows = parseCsv(text)
-  if (!rows.length) return []
+  if (!rows.length) return { ok: [], bad: 0 }
   const header = rows[0].map((h) => h.trim().toLowerCase())
   const idx = (name) => header.indexOf(name)
-  const out = []
+  const out = []; let bad = 0
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i]
     const get = (n) => { const j = idx(n); return j >= 0 ? (r[j] || '').trim() : '' }
     const type = (get('type') || 'mcq').toLowerCase()
     const prompt = get('prompt')
     if (!prompt) continue
+    if (!ALL_TYPES.includes(type)) { bad++; continue } // skip unknown types instead of failing the batch
     const points = parseInt(get('points'), 10) || 1
     let options = [], correct_key = null
     if (type === 'mcq') {
@@ -48,7 +49,7 @@ function csvToQuestions(text) {
     }
     out.push({ type, prompt, options, correct_key, points })
   }
-  return out
+  return { ok: out, bad }
 }
 
 export default function TeacherDashboard() {
@@ -58,8 +59,17 @@ export default function TeacherDashboard() {
   const [active, setActive] = useState(null)
   const [questions, setQuestions] = useState([])
   const [students, setStudents] = useState([])
+  const [assignedIds, setAssignedIds] = useState(new Set())
   const [tab, setTab] = useState('questions')
-  const [msg, setMsg] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [toast, setToast] = useState(null)
+  const toastTimer = useRef(null)
+
+  function showToast(text, kind = 'ok') {
+    setToast({ text, kind })
+    clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => setToast(null), 2600)
+  }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -70,10 +80,9 @@ export default function TeacherDashboard() {
 
   useEffect(() => { if (user) loadQuizzes() }, [user])
 
-  // Live results: re-fetch the open quiz's students/questions every 8s.
   useEffect(() => {
     if (!active) return
-    const id = setInterval(() => { reloadData(active) }, 8000)
+    const id = setInterval(() => { reloadData(active, true) }, 8000)
     return () => clearInterval(id)
   }, [active?.id]) // eslint-disable-line
 
@@ -81,12 +90,20 @@ export default function TeacherDashboard() {
     const { data } = await supabase.from('quizzes').select('*').order('created_at', { ascending: false })
     setQuizzes(data || [])
   }
-  async function reloadData(q) {
+  async function reloadData(q, bg = false) {
+    if (!bg) setLoading(true)
     const [{ data: qs }, { data: st }] = await Promise.all([
       supabase.from('questions').select('*').eq('quiz_id', q.id).order('created_at'),
       supabase.from('students').select('*').eq('quiz_id', q.id).order('created_at'),
     ])
     setQuestions(qs || []); setStudents(st || [])
+    // which questions are already assigned (so we lock them from edit/delete)
+    const sids = (st || []).map((s) => s.id)
+    if (sids.length) {
+      const { data: asg } = await supabase.from('assignments').select('question_id').in('student_id', sids)
+      setAssignedIds(new Set((asg || []).map((a) => a.question_id)))
+    } else setAssignedIds(new Set())
+    if (!bg) setLoading(false)
   }
   async function openQuiz(q) { setActive(q); setTab('questions'); await reloadData(q) }
   async function refreshActive() { if (active) await reloadData(active) }
@@ -106,7 +123,7 @@ export default function TeacherDashboard() {
 
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         <div style={{ width: 300, borderRight: '2px solid #131311', padding: 20, overflowY: 'auto' }}>
-          <NewQuiz onCreated={loadQuizzes} teacherId={user.id} setMsg={setMsg} />
+          <NewQuiz onCreated={loadQuizzes} teacherId={user.id} toast={showToast} />
           <div className="label" style={{ margin: '22px 0 10px' }}>Your quizzes</div>
           {quizzes.map((q) => (
             <button key={q.id} onClick={() => openQuiz(q)}
@@ -123,47 +140,49 @@ export default function TeacherDashboard() {
 
         <div style={{ flex: 1, padding: 32, overflowY: 'auto' }}>
           {!active && <p style={{ color: '#757064' }}>Select or create a quiz to begin.</p>}
-          {active && (
+          {active && loading && <p style={{ fontFamily: "'Space Mono',monospace", color: '#757064' }}>Loading…</p>}
+          {active && !loading && (
             <QuizPanel
-              quiz={active} questions={questions} students={students} tab={tab} setTab={setTab}
-              onChange={refreshActive} onQuizChange={(q) => { setActive(q); loadQuizzes() }}
+              quiz={active} questions={questions} students={students} assignedIds={assignedIds}
+              tab={tab} setTab={setTab} toast={showToast} onChange={refreshActive}
+              onQuizChange={(q) => { setActive(q); loadQuizzes() }}
+              onDeleted={() => { setActive(null); loadQuizzes() }}
             />
           )}
         </div>
       </div>
-      {msg && <div style={{ position: 'fixed', bottom: 16, left: 16, background: '#131311', color: '#fff', padding: '10px 16px', fontFamily: "'Space Mono',monospace", fontSize: 12 }}>{msg}</div>}
+
+      {toast && <div className={`toast ${toast.kind}`} role="status">{toast.text}</div>}
     </div>
   )
 }
 
-// ---------- New quiz form ----------
-function NewQuiz({ onCreated, teacherId, setMsg }) {
-  const [open, setOpen] = useState(false)
-  const [title, setTitle] = useState('')
-  const [nStu, setNStu] = useState(10)
-  const [perStu, setPerStu] = useState(10)
-  const [dur, setDur] = useState(30)
-  const [types, setTypes] = useState({ mcq: true, text: true, code: true })
+// ---------- Quiz settings form (shared by New + Edit) ----------
+function QuizForm({ initial, submitLabel, onSubmit, onCancel }) {
+  const [title, setTitle] = useState(initial.title || '')
+  const [nStu, setNStu] = useState(initial.num_students ?? 10)
+  const [perStu, setPerStu] = useState(initial.questions_per_student ?? 10)
+  const [dur, setDur] = useState(initial.duration_minutes ?? 30)
+  const [types, setTypes] = useState({ mcq: true, text: true, code: true, ...(initial.typesMap || {}) })
+  const [passOn, setPassOn] = useState(initial.pass_score != null)
+  const [passScore, setPassScore] = useState(initial.pass_score ?? 50)
+  const [showResults, setShowResults] = useState(!!initial.show_results)
   const needed = (parseInt(nStu) || 0) * (parseInt(perStu) || 0)
   const chosen = ALL_TYPES.filter((t) => types[t])
 
-  async function create() {
+  function submit() {
     if (!title.trim()) return
-    if (!chosen.length) { setMsg('Pick at least one question type.'); return }
-    const { error } = await supabase.from('quizzes').insert({
-      teacher_id: teacherId, title: title.trim(),
-      num_students: parseInt(nStu) || 1, questions_per_student: parseInt(perStu) || 1,
-      duration_minutes: parseInt(dur) || 30, allowed_types: chosen,
+    if (!chosen.length) return
+    onSubmit({
+      title: title.trim(), num_students: parseInt(nStu) || 1,
+      questions_per_student: parseInt(perStu) || 1, duration_minutes: parseInt(dur) || 30,
+      allowed_types: chosen, pass_score: passOn ? (parseInt(passScore) || 0) : null,
+      show_results: showResults,
     })
-    if (error) { setMsg(error.message); return }
-    setTitle(''); setOpen(false); onCreated()
   }
-
-  if (!open) return <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => setOpen(true)}>+ NEW QUIZ</button>
 
   return (
     <div style={{ border: '2px solid #131311', padding: 16 }}>
-      <div className="label" style={{ marginBottom: 10 }}>New quiz</div>
       <input className="field" placeholder="Quiz title" value={title} onChange={(e) => setTitle(e.target.value)} style={{ marginBottom: 10 }} />
       <label className="label">How many students?</label>
       <input className="field" type="number" min={1} value={nStu} onChange={(e) => setNStu(e.target.value)} style={{ margin: '4px 0 10px' }} />
@@ -172,7 +191,7 @@ function NewQuiz({ onCreated, teacherId, setMsg }) {
       <label className="label">Time limit (minutes)</label>
       <input className="field" type="number" min={1} value={dur} onChange={(e) => setDur(e.target.value)} style={{ margin: '4px 0 10px' }} />
 
-      <label className="label">Question types in this quiz</label>
+      <label className="label">Question types</label>
       <div style={{ display: 'flex', gap: 8, margin: '6px 0 12px' }}>
         {ALL_TYPES.map((t) => (
           <button type="button" key={t} onClick={() => setTypes({ ...types, [t]: !types[t] })} className="btn"
@@ -182,28 +201,79 @@ function NewQuiz({ onCreated, teacherId, setMsg }) {
         ))}
       </div>
 
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, cursor: 'pointer' }}>
+        <input type="checkbox" checked={passOn} onChange={(e) => setPassOn(e.target.checked)} />
+        <span className="label" style={{ margin: 0 }}>Set a passing score</span>
+      </label>
+      {passOn && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <span className="label">Pass at</span>
+          <input className="field" type="number" min={0} max={100} value={passScore} onChange={(e) => setPassScore(e.target.value)} style={{ width: 90 }} />
+          <span className="label">%</span>
+        </div>
+      )}
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer' }}>
+        <input type="checkbox" checked={showResults} onChange={(e) => setShowResults(e.target.checked)} />
+        <span className="label" style={{ margin: 0 }}>Show students their result after submit</span>
+      </label>
+
       <div style={{ background: '#131311', color: '#f2f1ec', padding: '10px 12px', fontFamily: "'Space Mono',monospace", fontSize: 12, marginBottom: 12 }}>
         You'll need <b style={{ color: '#f0645f' }}>{needed}</b> questions total.
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
-        <button className="btn btn-primary" onClick={create} style={{ flex: 1, padding: '10px' }}>CREATE</button>
-        <button className="btn" onClick={() => setOpen(false)} style={{ padding: '10px' }}>CANCEL</button>
+        <button className="btn btn-primary" onClick={submit} style={{ flex: 1, padding: '10px' }}>{submitLabel}</button>
+        <button className="btn" onClick={onCancel} style={{ padding: '10px' }}>CANCEL</button>
       </div>
     </div>
   )
 }
 
+function NewQuiz({ onCreated, teacherId, toast }) {
+  const [open, setOpen] = useState(false)
+  if (!open) return <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => setOpen(true)}>+ NEW QUIZ</button>
+  return (
+    <QuizForm initial={{}} submitLabel="CREATE" onCancel={() => setOpen(false)}
+      onSubmit={async (vals) => {
+        const { error } = await supabase.from('quizzes').insert({ teacher_id: teacherId, ...vals })
+        if (error) { toast(error.message, 'err'); return }
+        setOpen(false); onCreated(); toast('Quiz created')
+      }} />
+  )
+}
+
 // ---------- Quiz panel ----------
-function QuizPanel({ quiz, questions, students, tab, setTab, onChange, onQuizChange }) {
+function QuizPanel({ quiz, questions, students, assignedIds, tab, setTab, toast, onChange, onQuizChange, onDeleted }) {
+  const [editing, setEditing] = useState(false)
   const link = `${window.location.origin}/quiz/${quiz.id}`
   const needed = quiz.num_students * quiz.questions_per_student
   const allowedTypes = (quiz.allowed_types && quiz.allowed_types.length) ? quiz.allowed_types : ALL_TYPES
 
   async function toggleOpen() {
     const { data } = await supabase.from('quizzes').update({ is_open: !quiz.is_open }).eq('id', quiz.id).select().single()
-    if (data) onQuizChange(data)
+    if (data) { onQuizChange(data); toast(data.is_open ? 'Quiz opened' : 'Quiz closed') }
   }
-  async function copyLink() { await navigator.clipboard.writeText(link) }
+  async function copyLink() { await navigator.clipboard.writeText(link); toast('Link copied ✓') }
+  async function del() {
+    if (!window.confirm(`Delete "${quiz.title}"? This removes its questions, students, attempts and recordings. This cannot be undone.`)) return
+    const { error } = await supabase.from('quizzes').delete().eq('id', quiz.id)
+    if (error) { toast(error.message, 'err'); return }
+    toast('Quiz deleted'); onDeleted()
+  }
+
+  if (editing) {
+    const typesMap = Object.fromEntries(ALL_TYPES.map((t) => [t, allowedTypes.includes(t)]))
+    return (
+      <div style={{ maxWidth: 380 }}>
+        <h2 style={{ fontSize: 26, fontWeight: 800, margin: '0 0 12px' }}>Edit quiz</h2>
+        <QuizForm initial={{ ...quiz, typesMap }} submitLabel="SAVE CHANGES" onCancel={() => setEditing(false)}
+          onSubmit={async (vals) => {
+            const { data, error } = await supabase.from('quizzes').update(vals).eq('id', quiz.id).select().single()
+            if (error) { toast(error.message, 'err'); return }
+            setEditing(false); onQuizChange(data); toast('Quiz updated')
+          }} />
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -211,13 +281,18 @@ function QuizPanel({ quiz, questions, students, tab, setTab, onChange, onQuizCha
         <div>
           <h1 style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-1.2px', margin: '0 0 8px' }}>{quiz.title}</h1>
           <div className="label">
-            {quiz.num_students} students · {quiz.questions_per_student} each · {quiz.duration_minutes} min · types: {allowedTypes.map((t) => t.toUpperCase()).join(', ')}
+            {quiz.num_students} students · {quiz.questions_per_student} each · {quiz.duration_minutes} min · {allowedTypes.map((t) => t.toUpperCase()).join(', ')}
+            {quiz.pass_score != null ? ` · pass ${quiz.pass_score}%` : ''}{quiz.show_results ? ' · results shown' : ''}
           </div>
         </div>
-        <button className="btn" onClick={toggleOpen}
-          style={{ background: quiz.is_open ? '#1f9d55' : '#fff', color: quiz.is_open ? '#fff' : '#131311', borderColor: quiz.is_open ? '#1f9d55' : '#131311' }}>
-          {quiz.is_open ? 'OPEN ✓' : 'CLOSED'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn" onClick={() => setEditing(true)}>EDIT</button>
+          <button className="btn" onClick={toggleOpen}
+            style={{ background: quiz.is_open ? '#1f9d55' : '#fff', color: quiz.is_open ? '#fff' : '#131311', borderColor: quiz.is_open ? '#1f9d55' : '#131311' }}>
+            {quiz.is_open ? 'OPEN ✓' : 'CLOSED'}
+          </button>
+          <button className="btn" onClick={del} style={{ color: '#e5322d', borderColor: '#e5322d' }}>DELETE</button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '20px 0', flexWrap: 'wrap' }}>
@@ -236,29 +311,30 @@ function QuizPanel({ quiz, questions, students, tab, setTab, onChange, onQuizCha
       </div>
 
       {tab === 'questions'
-        ? <QuestionsTab quiz={quiz} questions={questions} needed={needed} allowedTypes={allowedTypes} onChange={onChange} />
-        : <ResultsTab students={students} onChange={onChange} />}
+        ? <QuestionsTab quiz={quiz} questions={questions} needed={needed} allowedTypes={allowedTypes} assignedIds={assignedIds} toast={toast} onChange={onChange} />
+        : <ResultsTab quiz={quiz} students={students} questions={questions} toast={toast} onChange={onChange} />}
     </div>
   )
 }
 
 // ---------- Questions tab ----------
-function QuestionsTab({ quiz, questions, needed, allowedTypes, onChange }) {
+function QuestionsTab({ quiz, questions, needed, allowedTypes, assignedIds, toast, onChange }) {
   const enough = questions.length >= needed
   const [menuId, setMenuId] = useState(null)
   const [editing, setEditing] = useState(null)
 
   async function del(q) {
+    if (assignedIds.has(q.id)) { toast('This question is in use by a student and is locked.', 'err'); return }
     if (!window.confirm('Delete this question?')) return
-    await supabase.from('questions').delete().eq('id', q.id)
-    setMenuId(null); onChange()
+    await supabase.from('questions').delete().eq('id', q.id); setMenuId(null); onChange(); toast('Question deleted')
   }
   async function duplicate(q) {
-    await supabase.from('questions').insert({
+    const { error } = await supabase.from('questions').insert({
       quiz_id: q.quiz_id, type: q.type, prompt: `${q.prompt} (copy)`,
       options: q.options || [], correct_key: q.correct_key, points: q.points,
     })
-    setMenuId(null); onChange()
+    setMenuId(null); if (error) { toast(error.message, 'err'); return }
+    onChange(); toast('Question duplicated')
   }
 
   return (
@@ -270,51 +346,55 @@ function QuestionsTab({ quiz, questions, needed, allowedTypes, onChange }) {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 30, alignItems: 'start' }}>
-        <AddQuestion quizId={quiz.id} allowedTypes={allowedTypes} onChange={onChange} />
-        <BulkAdd quizId={quiz.id} allowedTypes={allowedTypes} onChange={onChange} />
+        <AddQuestion quizId={quiz.id} allowedTypes={allowedTypes} toast={toast} onChange={onChange} />
+        <BulkAdd quizId={quiz.id} allowedTypes={allowedTypes} toast={toast} onChange={onChange} />
       </div>
 
-      <div className="label" style={{ margin: '30px 0 12px' }}>Questions ({questions.length})</div>
-      {questions.map((q, i) => (
-        <div key={q.id} style={{ border: '1.5px solid #dddbd1', padding: 16, marginBottom: 10, background: '#fff', display: 'flex', justifyContent: 'space-between', gap: 16 }}>
-          <div>
-            <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 11, background: '#131311', color: '#fff', padding: '2px 7px', marginRight: 8 }}>{q.type.toUpperCase()}</span>
-            <span style={{ fontWeight: 600 }}>{i + 1}. {q.prompt}</span>
-            {q.type === 'mcq' && (
-              <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064', marginTop: 6 }}>
-                {(q.options || []).map((o) => `${o.key}) ${o.text}`).join('   ')} · correct: <b>{q.correct_key}</b>
-              </div>
-            )}
+      <div className="label" style={{ margin: '30px 0 12px' }}>Questions ({questions.length}) · locked ones are in use by a student</div>
+      {questions.map((q, i) => {
+        const locked = assignedIds.has(q.id)
+        return (
+          <div key={q.id} style={{ border: '1.5px solid #dddbd1', padding: 16, marginBottom: 10, background: '#fff', display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+            <div>
+              <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 11, background: '#131311', color: '#fff', padding: '2px 7px', marginRight: 8 }}>{q.type.toUpperCase()}</span>
+              {locked && <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 11, background: '#c9781f', color: '#fff', padding: '2px 7px', marginRight: 8 }}>LOCKED</span>}
+              <span style={{ fontWeight: 600 }}>{i + 1}. {q.prompt}</span>
+              {q.type === 'mcq' && (
+                <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064', marginTop: 6 }}>
+                  {(q.options || []).map((o) => `${o.key}) ${o.text}`).join('   ')} · correct: <b>{q.correct_key}</b>
+                </div>
+              )}
+            </div>
+            <div style={{ position: 'relative' }}>
+              <button className="btn" style={{ padding: '6px 14px', height: 'fit-content', fontSize: 18, lineHeight: 1 }}
+                onClick={() => setMenuId(menuId === q.id ? null : q.id)}>⋯</button>
+              {menuId === q.id && (
+                <div style={{ position: 'absolute', right: 0, top: '108%', zIndex: 30, background: '#fff', border: '2px solid #131311', minWidth: 140, boxShadow: '4px 4px 0 rgba(19,19,17,.15)' }}>
+                  {[['Edit', () => { if (locked) { toast('Locked — in use by a student.', 'err') } else { setEditing(q) } setMenuId(null) }],
+                    ['Duplicate', () => duplicate(q)],
+                    ['Delete', () => del(q)]].map(([label, fn]) => (
+                    <button key={label} onClick={fn}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 14px', border: 'none', borderBottom: '1px solid #eee', background: '#fff', cursor: 'pointer', fontFamily: "'Space Mono',monospace", fontSize: 13, color: label === 'Delete' ? '#e5322d' : '#131311' }}>
+                      {label}{locked && label !== 'Duplicate' ? ' 🔒' : ''}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-          <div style={{ position: 'relative' }}>
-            <button className="btn" style={{ padding: '6px 14px', height: 'fit-content', fontSize: 18, lineHeight: 1 }}
-              onClick={() => setMenuId(menuId === q.id ? null : q.id)}>⋯</button>
-            {menuId === q.id && (
-              <div style={{ position: 'absolute', right: 0, top: '108%', zIndex: 30, background: '#fff', border: '2px solid #131311', minWidth: 140, boxShadow: '4px 4px 0 rgba(19,19,17,.15)' }}>
-                {[['Edit', () => { setEditing(q); setMenuId(null) }],
-                  ['Duplicate', () => duplicate(q)],
-                  ['Delete', () => del(q)]].map(([label, fn]) => (
-                  <button key={label} onClick={fn}
-                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 14px', border: 'none', borderBottom: '1px solid #eee', background: '#fff', cursor: 'pointer', fontFamily: "'Space Mono',monospace", fontSize: 13, color: label === 'Delete' ? '#e5322d' : '#131311' }}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      ))}
+        )
+      })}
 
       {editing && (
-        <QuestionEditor question={editing} allowedTypes={allowedTypes}
-          onClose={() => setEditing(null)} onSaved={() => { setEditing(null); onChange() }} />
+        <QuestionEditor question={editing} allowedTypes={allowedTypes} toast={toast}
+          onClose={() => setEditing(null)} onSaved={() => { setEditing(null); onChange(); toast('Question updated') }} />
       )}
     </div>
   )
 }
 
-// ---------- Edit one question (type can change; answer fields adapt) ----------
-function QuestionEditor({ question, allowedTypes, onClose, onSaved }) {
+// ---------- Edit one question ----------
+function QuestionEditor({ question, allowedTypes, toast, onClose, onSaved }) {
   const types = (allowedTypes && allowedTypes.length) ? allowedTypes : ALL_TYPES
   const [type, setType] = useState(question.type)
   const [prompt, setPrompt] = useState(question.prompt)
@@ -327,18 +407,27 @@ function QuestionEditor({ question, allowedTypes, onClose, onSaved }) {
     return o
   })
 
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, []) // eslint-disable-line
+
   async function save() {
-    if (!prompt.trim()) return
-    setBusy(true)
+    if (!prompt.trim()) { toast('Enter a prompt.', 'err'); return }
     const options = type === 'mcq'
       ? Object.entries(opts).filter(([, v]) => v.trim()).map(([key, text]) => ({ key, text: text.trim() }))
       : []
+    if (type === 'mcq' && (options.length < 2 || !options.some((o) => o.key === correct))) {
+      toast('MCQ needs at least 2 options and a correct answer among them.', 'err'); return
+    }
+    setBusy(true)
     const { error } = await supabase.from('questions').update({
       type, prompt: prompt.trim(), options,
       correct_key: type === 'mcq' ? correct : null, points: parseInt(points) || 1,
     }).eq('id', question.id)
     setBusy(false)
-    if (error) { alert(error.message); return }
+    if (error) { toast(error.message, 'err'); return }
     onSaved()
   }
 
@@ -347,9 +436,8 @@ function QuestionEditor({ question, allowedTypes, onClose, onSaved }) {
       <div onClick={(e) => e.stopPropagation()} style={{ background: '#f2f1ec', border: '2px solid #131311', width: 560, maxWidth: '100%', padding: 26, marginTop: 30 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h2 style={{ fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: '-.5px' }}>Edit question</h2>
-          <button className="btn" style={{ padding: '6px 12px' }} onClick={onClose}>CLOSE ✕</button>
+          <button className="btn" style={{ padding: '6px 12px' }} onClick={onClose} autoFocus>CLOSE ✕</button>
         </div>
-
         <label className="label">Type</label>
         <div style={{ display: 'flex', gap: 8, margin: '6px 0 14px' }}>
           {types.map((t) => (
@@ -357,10 +445,8 @@ function QuestionEditor({ question, allowedTypes, onClose, onSaved }) {
               style={{ padding: '8px 12px', background: type === t ? '#e5322d' : 'transparent', color: type === t ? '#fff' : '#131311', borderColor: type === t ? '#e5322d' : '#131311' }}>{t.toUpperCase()}</button>
           ))}
         </div>
-
         <label className="label">Prompt</label>
         <textarea className="field" value={prompt} onChange={(e) => setPrompt(e.target.value)} style={{ minHeight: 80, margin: '6px 0 14px' }} />
-
         {type === 'mcq' && (
           <div style={{ marginBottom: 14 }}>
             <label className="label">Options — select the correct one</label>
@@ -373,7 +459,6 @@ function QuestionEditor({ question, allowedTypes, onClose, onSaved }) {
             ))}
           </div>
         )}
-
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span className="label">Points</span>
           <input className="field" type="number" min={1} value={points} onChange={(e) => setPoints(e.target.value)} style={{ width: 90 }} />
@@ -384,7 +469,7 @@ function QuestionEditor({ question, allowedTypes, onClose, onSaved }) {
   )
 }
 
-function AddQuestion({ quizId, allowedTypes, onChange }) {
+function AddQuestion({ quizId, allowedTypes, toast, onChange }) {
   const types = (allowedTypes && allowedTypes.length) ? allowedTypes : ALL_TYPES
   const [type, setType] = useState(types[0])
   const [prompt, setPrompt] = useState('')
@@ -395,16 +480,19 @@ function AddQuestion({ quizId, allowedTypes, onChange }) {
   useEffect(() => { if (!types.includes(type)) setType(types[0]) }, [allowedTypes]) // eslint-disable-line
 
   async function add() {
-    if (!prompt.trim()) return
+    if (!prompt.trim()) { toast('Enter a prompt.', 'err'); return }
     const options = type === 'mcq'
       ? Object.entries(opts).filter(([, v]) => v.trim()).map(([key, text]) => ({ key, text: text.trim() }))
       : []
+    if (type === 'mcq' && (options.length < 2 || !options.some((o) => o.key === correct))) {
+      toast('MCQ needs at least 2 options and a correct answer among them.', 'err'); return
+    }
     const { error } = await supabase.from('questions').insert({
       quiz_id: quizId, type, prompt: prompt.trim(), options,
       correct_key: type === 'mcq' ? correct : null, points: parseInt(points) || 1,
     })
-    if (error) { alert(error.message); return }
-    setPrompt(''); setOpts({ A: '', B: '', C: '', D: '' }); onChange()
+    if (error) { toast(error.message, 'err'); return }
+    setPrompt(''); setOpts({ A: '', B: '', C: '', D: '' }); onChange(); toast('Question added')
   }
 
   return (
@@ -432,9 +520,8 @@ function AddQuestion({ quizId, allowedTypes, onChange }) {
   )
 }
 
-function BulkAdd({ quizId, allowedTypes, onChange }) {
+function BulkAdd({ quizId, allowedTypes, toast, onChange }) {
   const [text, setText] = useState('')
-  const [msg, setMsg] = useState('')
   const fileRef = useRef(null)
   const template = 'type,prompt,option_a,option_b,option_c,option_d,correct,points\nmcq,"Capital of France?",Paris,London,Rome,Berlin,A,1\ntext,"Explain gravity.",,,,,,2\ncode,"Reverse a string in Python.",,,,,,3'
 
@@ -442,21 +529,20 @@ function BulkAdd({ quizId, allowedTypes, onChange }) {
     const file = e.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
-    reader.onload = () => { setText(String(reader.result || '')); setMsg(`Loaded "${file.name}". Click Import.`) }
+    reader.onload = () => { setText(String(reader.result || '')); toast(`Loaded "${file.name}" — click Import`) }
     reader.readAsText(file)
   }
 
   async function importAll() {
-    const rows = csvToQuestions(text)
-    if (!rows.length) { setMsg('No questions found — check the format.'); return }
+    const { ok: rows, bad } = csvToQuestions(text)
+    if (!rows.length) { toast('No valid questions found — check the format.', 'err'); return }
     const allowed = new Set(allowedTypes && allowedTypes.length ? allowedTypes : ALL_TYPES)
     const kept = rows.filter((r) => allowed.has(r.type))
-    const skipped = rows.length - kept.length
-    if (!kept.length) { setMsg(`Skipped all ${rows.length} — this quiz only allows: ${[...allowed].join(', ')}.`); return }
-    const payload = kept.map((r) => ({ quiz_id: quizId, ...r }))
-    const { error } = await supabase.from('questions').insert(payload)
-    if (error) { setMsg(error.message); return }
-    setMsg(`Imported ${kept.length} question(s)${skipped ? ` · skipped ${skipped} (type not allowed here)` : ''}.`)
+    const skipped = rows.length - kept.length + bad
+    if (!kept.length) { toast(`Skipped all — this quiz only allows: ${[...allowed].join(', ')}.`, 'err'); return }
+    const { error } = await supabase.from('questions').insert(kept.map((r) => ({ quiz_id: quizId, ...r })))
+    if (error) { toast(error.message, 'err'); return }
+    toast(`Imported ${kept.length}${skipped ? ` · skipped ${skipped}` : ''}`)
     setText(''); if (fileRef.current) fileRef.current.value = ''; onChange()
   }
 
@@ -476,28 +562,76 @@ function BulkAdd({ quizId, allowedTypes, onChange }) {
         <button className="btn btn-primary" onClick={importAll}>IMPORT →</button>
         <button className="btn" onClick={() => setText(template)}>USE EXAMPLE</button>
       </div>
-      {msg && <p style={{ fontSize: 12, color: '#c72620', marginTop: 8 }}>{msg}</p>}
     </div>
   )
 }
 
 // ---------- Results tab ----------
-function ResultsTab({ students, onChange }) {
-  const [sel, setSel] = useState(null) // student being viewed
+function ResultsTab({ quiz, students, questions, toast, onChange }) {
+  const [sel, setSel] = useState(null)
+  const [stats, setStats] = useState(null)
 
-  async function reallow(id) {
-    try { await rpc('teacher_reallow_student', { p_student_id: id }); onChange() }
-    catch (e) { alert(e.message) }
+  // analytics: summary tiles from students; hardest questions from answers
+  useEffect(() => {
+    const submitted = students.filter((s) => s.status === 'submitted')
+    let avgPct = null, passRate = null, avgMin = null
+    if (submitted.length) {
+      const pcts = submitted.filter((s) => s.total_points).map((s) => (s.score / s.total_points) * 100)
+      if (pcts.length) avgPct = Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length)
+      if (quiz.pass_score != null && pcts.length) passRate = Math.round(100 * pcts.filter((p) => p >= quiz.pass_score).length / pcts.length)
+      const times = submitted.filter((s) => s.started_at && s.submitted_at)
+        .map((s) => (new Date(s.submitted_at) - new Date(s.started_at)) / 60000)
+      if (times.length) avgMin = Math.round(times.reduce((a, b) => a + b, 0) / times.length)
+    }
+    setStats((prev) => ({ ...(prev || {}), submitted: submitted.length, avgPct, passRate, avgMin }))
+
+    // hardest questions (needs answers)
+    let alive = true
+    ;(async () => {
+      const sids = students.map((s) => s.id)
+      if (!sids.length) { setStats((p) => ({ ...(p || {}), hardest: [] })); return }
+      const { data: ans } = await supabase.from('answers').select('question_id,is_correct').in('student_id', sids)
+      if (!alive || !ans) return
+      const map = {}
+      ans.forEach((a) => { const m = map[a.question_id] || { t: 0, c: 0 }; m.t++; if (a.is_correct) m.c++; map[a.question_id] = m })
+      const byId = Object.fromEntries(questions.map((q) => [q.id, q.prompt]))
+      const hardest = Object.entries(map).map(([id, m]) => ({ prompt: byId[id] || '(question)', pct: Math.round(100 * m.c / m.t), n: m.t }))
+        .sort((a, b) => a.pct - b.pct).slice(0, 5)
+      setStats((p) => ({ ...(p || {}), hardest }))
+    })()
+    return () => { alive = false }
+  }, [students, questions, quiz.pass_score]) // eslint-disable-line
+
+  async function reallow(s) {
+    if (!window.confirm(`Give ${s.name} a fresh attempt? This clears their answers and recordings.`)) return
+    try { await rpc('teacher_reallow_student', { p_student_id: s.id }); onChange(); toast(`${s.name} can retake`) }
+    catch (e) { toast(e.message, 'err') }
   }
   const badge = (s) => {
     const map = { submitted: '#1f9d55', in_progress: '#e5a72d', registered: '#757064', blocked: '#e5322d' }
     return <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 11, color: '#fff', background: map[s.status] || '#757064', padding: '2px 8px' }}>{s.status.toUpperCase()}</span>
   }
+  const tile = (label, val) => (
+    <div style={{ border: '1.5px solid #dddbd1', background: '#fff', padding: '12px 14px' }}>
+      <div style={{ fontFamily: "'Bricolage Grotesque',sans-serif", fontWeight: 800, fontSize: 26, letterSpacing: '-.5px' }}>{val}</div>
+      <div className="label" style={{ marginTop: 4 }}>{label}</div>
+    </div>
+  )
 
   return (
     <div>
+      {/* summary */}
+      {stats && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 18 }}>
+          {tile('Submitted', `${stats.submitted}/${quiz.num_students}`)}
+          {tile('Average', stats.avgPct != null ? `${stats.avgPct}%` : '—')}
+          {tile('Pass rate', stats.passRate != null ? `${stats.passRate}%` : '—')}
+          {tile('Avg time', stats.avgMin != null ? `${stats.avgMin}m` : '—')}
+        </div>
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <span className="label">{students.length} student(s) · updates automatically every few seconds</span>
+        <span className="label">{students.length} student(s) · updates automatically</span>
         <button className="btn" style={{ padding: '8px 14px' }} onClick={onChange}>↻ REFRESH NOW</button>
       </div>
 
@@ -508,9 +642,7 @@ function ResultsTab({ students, onChange }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <thead>
                 <tr style={{ textAlign: 'left', borderBottom: '2px solid #131311' }}>
-                  {['Student', 'Status', 'Score', 'Warnings', 'Actions'].map((h) => (
-                    <th key={h} className="label" style={{ padding: '10px 8px' }}>{h}</th>
-                  ))}
+                  {['Student', 'Status', 'Score', 'Warnings', 'Actions'].map((h) => (<th key={h} className="label" style={{ padding: '10px 8px' }}>{h}</th>))}
                 </tr>
               </thead>
               <tbody>
@@ -518,14 +650,14 @@ function ResultsTab({ students, onChange }) {
                   <tr key={s.id} style={{ borderBottom: '1.5px solid #dddbd1' }}>
                     <td style={{ padding: '12px 8px' }}>
                       <div style={{ fontWeight: 700 }}>{s.name}</div>
-                      <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064' }}>{s.email}{s.student_id_txt ? ` · ${s.student_id_txt}` : ''}</div>
+                      <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064' }}>{s.student_id_txt || s.email}</div>
                     </td>
                     <td style={{ padding: '12px 8px' }}>{badge(s)}</td>
                     <td style={{ padding: '12px 8px', fontFamily: "'Space Mono',monospace" }}>{s.score != null ? `${s.score}/${s.total_points}` : '—'}</td>
                     <td style={{ padding: '12px 8px', fontFamily: "'Space Mono',monospace", color: s.warnings ? '#e5322d' : '#757064' }}>{s.warnings}</td>
                     <td style={{ padding: '12px 8px', whiteSpace: 'nowrap' }}>
                       <button className="btn btn-primary" style={{ padding: '6px 12px', marginRight: 6 }} onClick={() => setSel(s)}>VIEW</button>
-                      <button className="btn" style={{ padding: '6px 12px' }} onClick={() => reallow(s.id)}>RE-ALLOW</button>
+                      <button className="btn" style={{ padding: '6px 12px' }} onClick={() => reallow(s)}>RE-ALLOW</button>
                     </td>
                   </tr>
                 ))}
@@ -534,13 +666,26 @@ function ResultsTab({ students, onChange }) {
           </div>
         )}
 
-      {sel && <StudentDetail student={sel} onClose={() => setSel(null)} onGraded={onChange} />}
+      {stats?.hardest?.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <div className="label" style={{ marginBottom: 8 }}>Hardest questions (lowest % correct)</div>
+          {stats.hardest.map((h, i) => (
+            <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #eee' }}>
+              <span style={{ fontFamily: "'Space Mono',monospace", fontWeight: 700, color: h.pct < 50 ? '#e5322d' : '#131311', width: 48 }}>{h.pct}%</span>
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.prompt}</span>
+              <span className="label">{h.n} ans</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {sel && <StudentDetail student={sel} onClose={() => setSel(null)} onGraded={onChange} toast={toast} />}
     </div>
   )
 }
 
 // ---------- Student detail (videos + answers + grading) ----------
-function StudentDetail({ student, onClose, onGraded }) {
+function StudentDetail({ student, onClose, onGraded, toast }) {
   const [answers, setAnswers] = useState([])
   const [camUrl, setCamUrl] = useState(null)
   const [scrUrl, setScrUrl] = useState(null)
@@ -548,25 +693,27 @@ function StudentDetail({ student, onClose, onGraded }) {
   const [score, setScore] = useState(student.score)
 
   useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, []) // eslint-disable-line
+
+  useEffect(() => {
     let alive = true
     async function load() {
       setLoading(true)
-      const { data: ans } = await supabase
-        .from('answers')
-        .select('*, questions(prompt,type,options,correct_key,points)')
-        .eq('student_id', student.id)
+      const { data: ans } = await supabase.from('answers')
+        .select('*, questions(prompt,type,options,correct_key,points)').eq('student_id', student.id)
       const sign = async (path) => {
         if (!path) return null
         const { data } = await supabase.storage.from('recordings').createSignedUrl(path, 3600)
         return data?.signedUrl || null
       }
-      const cam = await sign(student.camera_url)
-      const scr = await sign(student.screen_url)
+      const cam = await sign(student.camera_url); const scr = await sign(student.screen_url)
       if (!alive) return
       setAnswers(ans || []); setCamUrl(cam); setScrUrl(scr); setLoading(false)
     }
-    load()
-    return () => { alive = false }
+    load(); return () => { alive = false }
   }, [student.id]) // eslint-disable-line
 
   async function grade(answerId, awarded) {
@@ -574,8 +721,8 @@ function StudentDetail({ student, onClose, onGraded }) {
       const res = await rpc('teacher_grade_answer', { p_answer_id: answerId, p_awarded: awarded })
       setScore(res.score)
       setAnswers((a) => a.map((x) => x.id === answerId ? { ...x, awarded, is_correct: awarded > 0 } : x))
-      onGraded && onGraded()
-    } catch (e) { alert(e.message) }
+      onGraded && onGraded(); toast('Grade saved')
+    } catch (e) { toast(e.message, 'err') }
   }
 
   return (
@@ -584,17 +731,16 @@ function StudentDetail({ student, onClose, onGraded }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <h2 style={{ fontSize: 28, fontWeight: 800, margin: '0 0 4px', letterSpacing: '-.6px' }}>{student.name}</h2>
-            <div className="label">{student.email}{student.student_id_txt ? ` · ${student.student_id_txt}` : ''} · warnings: {student.warnings}</div>
+            <div className="label">{student.student_id_txt ? `ID ${student.student_id_txt} · ` : ''}{student.email} · warnings: {student.warnings}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 22, fontWeight: 700 }}>{score != null ? `${score}/${student.total_points}` : '—'}</div>
-            <button className="btn" style={{ padding: '6px 14px', marginTop: 6 }} onClick={onClose}>CLOSE ✕</button>
+            <button className="btn" style={{ padding: '6px 14px', marginTop: 6 }} onClick={onClose} autoFocus>CLOSE ✕</button>
           </div>
         </div>
 
         {loading ? <p style={{ fontFamily: "'Space Mono',monospace" }}>Loading…</p> : (
           <>
-            {/* Videos */}
             <div className="label" style={{ margin: '20px 0 8px' }}>Recordings (private — only you)</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               {camUrl
@@ -605,7 +751,6 @@ function StudentDetail({ student, onClose, onGraded }) {
                 : <div className="label">No screen recording</div>}
             </div>
 
-            {/* Answers */}
             <div className="label" style={{ margin: '24px 0 8px' }}>Answers</div>
             {answers.length === 0 && <p style={{ color: '#757064' }}>No answers recorded.</p>}
             {answers.map((a) => {
@@ -621,16 +766,12 @@ function StudentDetail({ student, onClose, onGraded }) {
                   <div style={{ fontFamily: q.type === 'code' ? "'Space Mono',monospace" : 'inherit', fontSize: 15, whiteSpace: 'pre-wrap', background: '#f7f6f1', padding: 12, border: '1px solid #eee' }}>
                     {a.response || <span style={{ color: '#999' }}>(no answer)</span>}
                   </div>
-
                   {isMcq ? (
                     <div style={{ marginTop: 8, fontFamily: "'Space Mono',monospace", fontSize: 13 }}>
-                      {a.is_correct
-                        ? <span style={{ color: '#1f9d55' }}>✓ Correct (+{q.points})</span>
+                      {a.is_correct ? <span style={{ color: '#1f9d55' }}>✓ Correct (+{q.points})</span>
                         : <span style={{ color: '#e5322d' }}>✗ Wrong · correct answer: {q.correct_key}</span>}
                     </div>
-                  ) : (
-                    <GradeRow answer={a} maxPoints={q.points || 0} onGrade={grade} />
-                  )}
+                  ) : <GradeRow answer={a} maxPoints={q.points || 0} onGrade={grade} />}
                 </div>
               )
             })}
@@ -646,12 +787,9 @@ function GradeRow({ answer, maxPoints, onGrade }) {
   return (
     <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
       <span className="label">Award points (0–{maxPoints})</span>
-      <input className="field" type="number" min={0} max={maxPoints} value={val}
-        onChange={(e) => setVal(e.target.value)} style={{ width: 90 }} />
+      <input className="field" type="number" min={0} max={maxPoints} value={val} onChange={(e) => setVal(e.target.value)} style={{ width: 90 }} />
       <button className="btn btn-primary" style={{ padding: '8px 14px' }}
-        onClick={() => onGrade(answer.id, Math.max(0, Math.min(parseFloat(val) || 0, maxPoints)))}>
-        SAVE GRADE
-      </button>
+        onClick={() => onGrade(answer.id, Math.max(0, Math.min(parseFloat(val) || 0, maxPoints)))}>SAVE GRADE</button>
       {answer.awarded != null && <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#1f9d55' }}>graded: {answer.awarded}</span>}
     </div>
   )

@@ -245,6 +245,22 @@ function QuizPanel({ quiz, questions, students, tab, setTab, onChange, onQuizCha
 // ---------- Questions tab ----------
 function QuestionsTab({ quiz, questions, needed, allowedTypes, onChange }) {
   const enough = questions.length >= needed
+  const [menuId, setMenuId] = useState(null)
+  const [editing, setEditing] = useState(null)
+
+  async function del(q) {
+    if (!window.confirm('Delete this question?')) return
+    await supabase.from('questions').delete().eq('id', q.id)
+    setMenuId(null); onChange()
+  }
+  async function duplicate(q) {
+    await supabase.from('questions').insert({
+      quiz_id: q.quiz_id, type: q.type, prompt: `${q.prompt} (copy)`,
+      options: q.options || [], correct_key: q.correct_key, points: q.points,
+    })
+    setMenuId(null); onChange()
+  }
+
   return (
     <div>
       <div style={{ background: enough ? '#e6f6ee' : '#fdf0ef', border: `2px solid ${enough ? '#1f9d55' : '#e5322d'}`, padding: 14, marginBottom: 22, fontFamily: "'Space Mono',monospace", fontSize: 13 }}>
@@ -270,10 +286,100 @@ function QuestionsTab({ quiz, questions, needed, allowedTypes, onChange }) {
               </div>
             )}
           </div>
-          <button className="btn" style={{ padding: '6px 12px', height: 'fit-content' }}
-            onClick={async () => { await supabase.from('questions').delete().eq('id', q.id); onChange() }}>✕</button>
+          <div style={{ position: 'relative' }}>
+            <button className="btn" style={{ padding: '6px 14px', height: 'fit-content', fontSize: 18, lineHeight: 1 }}
+              onClick={() => setMenuId(menuId === q.id ? null : q.id)}>⋯</button>
+            {menuId === q.id && (
+              <div style={{ position: 'absolute', right: 0, top: '108%', zIndex: 30, background: '#fff', border: '2px solid #131311', minWidth: 140, boxShadow: '4px 4px 0 rgba(19,19,17,.15)' }}>
+                {[['Edit', () => { setEditing(q); setMenuId(null) }],
+                  ['Duplicate', () => duplicate(q)],
+                  ['Delete', () => del(q)]].map(([label, fn]) => (
+                  <button key={label} onClick={fn}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 14px', border: 'none', borderBottom: '1px solid #eee', background: '#fff', cursor: 'pointer', fontFamily: "'Space Mono',monospace", fontSize: 13, color: label === 'Delete' ? '#e5322d' : '#131311' }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       ))}
+
+      {editing && (
+        <QuestionEditor question={editing} allowedTypes={allowedTypes}
+          onClose={() => setEditing(null)} onSaved={() => { setEditing(null); onChange() }} />
+      )}
+    </div>
+  )
+}
+
+// ---------- Edit one question (type can change; answer fields adapt) ----------
+function QuestionEditor({ question, allowedTypes, onClose, onSaved }) {
+  const types = (allowedTypes && allowedTypes.length) ? allowedTypes : ALL_TYPES
+  const [type, setType] = useState(question.type)
+  const [prompt, setPrompt] = useState(question.prompt)
+  const [correct, setCorrect] = useState(question.correct_key || 'A')
+  const [points, setPoints] = useState(question.points || 1)
+  const [busy, setBusy] = useState(false)
+  const [opts, setOpts] = useState(() => {
+    const o = { A: '', B: '', C: '', D: '' }
+    ;(question.options || []).forEach((x) => { if (o[x.key] !== undefined) o[x.key] = x.text })
+    return o
+  })
+
+  async function save() {
+    if (!prompt.trim()) return
+    setBusy(true)
+    const options = type === 'mcq'
+      ? Object.entries(opts).filter(([, v]) => v.trim()).map(([key, text]) => ({ key, text: text.trim() }))
+      : []
+    const { error } = await supabase.from('questions').update({
+      type, prompt: prompt.trim(), options,
+      correct_key: type === 'mcq' ? correct : null, points: parseInt(points) || 1,
+    }).eq('id', question.id)
+    setBusy(false)
+    if (error) { alert(error.message); return }
+    onSaved()
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(19,19,17,.6)', zIndex: 70, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: 24, overflowY: 'auto' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: '#f2f1ec', border: '2px solid #131311', width: 560, maxWidth: '100%', padding: 26, marginTop: 30 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h2 style={{ fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: '-.5px' }}>Edit question</h2>
+          <button className="btn" style={{ padding: '6px 12px' }} onClick={onClose}>CLOSE ✕</button>
+        </div>
+
+        <label className="label">Type</label>
+        <div style={{ display: 'flex', gap: 8, margin: '6px 0 14px' }}>
+          {types.map((t) => (
+            <button key={t} onClick={() => setType(t)} className="btn"
+              style={{ padding: '8px 12px', background: type === t ? '#e5322d' : 'transparent', color: type === t ? '#fff' : '#131311', borderColor: type === t ? '#e5322d' : '#131311' }}>{t.toUpperCase()}</button>
+          ))}
+        </div>
+
+        <label className="label">Prompt</label>
+        <textarea className="field" value={prompt} onChange={(e) => setPrompt(e.target.value)} style={{ minHeight: 80, margin: '6px 0 14px' }} />
+
+        {type === 'mcq' && (
+          <div style={{ marginBottom: 14 }}>
+            <label className="label">Options — select the correct one</label>
+            {['A', 'B', 'C', 'D'].map((k) => (
+              <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                <input type="radio" name="editcorrect" checked={correct === k} onChange={() => setCorrect(k)} />
+                <span className="label" style={{ width: 14 }}>{k}</span>
+                <input className="field" placeholder={`Option ${k}`} value={opts[k]} onChange={(e) => setOpts({ ...opts, [k]: e.target.value })} />
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span className="label">Points</span>
+          <input className="field" type="number" min={1} value={points} onChange={(e) => setPoints(e.target.value)} style={{ width: 90 }} />
+          <button className="btn btn-primary" onClick={save} disabled={busy} style={{ marginLeft: 'auto' }}>{busy ? 'SAVING…' : 'SAVE CHANGES →'}</button>
+        </div>
+      </div>
     </div>
   )
 }

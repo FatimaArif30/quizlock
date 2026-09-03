@@ -94,6 +94,8 @@ export function useRecorder() {
   }, [])
 
   const uploadAll = useCallback(async (studentId) => {
+    // Returns storage PATHS (not public URLs). The bucket is private now —
+    // the teacher dashboard and the email function create signed links.
     const out = { cameraUrl: null, screenUrl: null }
     const ext = 'webm'
     const upload = async (chunks, label) => {
@@ -104,8 +106,7 @@ export function useRecorder() {
         .from('recordings')
         .upload(path, blob, { contentType: mime.current, upsert: true })
       if (upErr) { console.error('Upload failed', label, upErr); return null }
-      const { data } = supabase.storage.from('recordings').getPublicUrl(path)
-      return data.publicUrl
+      return path
     }
     out.cameraUrl = await upload(camChunks.current, 'camera')
     out.screenUrl = await upload(scrChunks.current, 'screen')

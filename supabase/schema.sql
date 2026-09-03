@@ -68,6 +68,7 @@ create table if not exists answers (
   question_id uuid not null references questions(id) on delete cascade,
   response    text,
   is_correct  boolean,
+  awarded     numeric,
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now(),
   unique (student_id, question_id)
@@ -277,19 +278,20 @@ begin
     return json_build_object('error','already_submitted');
   end if;
 
-  -- grade multiple-choice answers
-  update answers an set is_correct = (
-      lower(coalesce(an.response,'')) = lower(coalesce(q.correct_key,'~none~')))
+  -- grade multiple-choice answers (set is_correct + awarded points)
+  update answers an set
+      is_correct = (lower(coalesce(an.response,'')) = lower(coalesce(q.correct_key,'~none~'))),
+      awarded = (case when lower(coalesce(an.response,'')) = lower(coalesce(q.correct_key,'~none~'))
+                      then q.points else 0 end)
     from questions q
     where q.id = an.question_id and q.type = 'mcq' and an.student_id = p_student_id;
 
-  select coalesce(sum(case when an.is_correct then q.points else 0 end),0),
-         coalesce(sum(q.points),0)
-    into v_score, v_total
-  from assignments a
-  join questions q on q.id = a.question_id
-  left join answers an on an.student_id = p_student_id and an.question_id = q.id
-  where a.student_id = p_student_id;
+  select coalesce(sum(q.points),0) into v_total
+    from assignments a join questions q on q.id = a.question_id
+    where a.student_id = p_student_id;
+
+  select coalesce(sum(coalesce(an.awarded,0)),0) into v_score
+    from answers an where an.student_id = p_student_id;
 
   update students set status='submitted', submitted_at=now(),
       submit_reason = p_reason, score = v_score, total_points = v_total
@@ -329,6 +331,28 @@ begin
   return json_build_object('ok', true);
 end $$;
 
+-- Teacher grades one text/code answer; the student's score recomputes.
+create or replace function teacher_grade_answer(p_answer_id uuid, p_awarded numeric)
+returns json
+language plpgsql security definer set search_path = public as $$
+declare v_student_id uuid; v_score numeric;
+begin
+  select an.student_id into v_student_id from answers an
+    join students s on s.id = an.student_id
+    join quizzes q on q.id = s.quiz_id
+    where an.id = p_answer_id and q.teacher_id = auth.uid();
+  if v_student_id is null then return json_build_object('error','not_allowed'); end if;
+
+  update answers set awarded = p_awarded, is_correct = (coalesce(p_awarded,0) > 0)
+    where id = p_answer_id;
+
+  select coalesce(sum(coalesce(awarded,0)),0) into v_score
+    from answers where student_id = v_student_id;
+  update students set score = v_score where id = v_student_id;
+
+  return json_build_object('score', v_score);
+end $$;
+
 -- ---------- GRANTS ----------------------------------------------------
 grant execute on function register_student(uuid,text,text,text) to anon, authenticated;
 grant execute on function get_quiz_for_student(uuid,text)       to anon, authenticated;
@@ -337,10 +361,11 @@ grant execute on function record_warning(uuid,text)             to anon, authent
 grant execute on function set_recording_urls(uuid,text,text,text) to anon, authenticated;
 grant execute on function finish_quiz(uuid,text,text)           to anon, authenticated;
 grant execute on function teacher_reallow_student(uuid)         to authenticated;
+grant execute on function teacher_grade_answer(uuid,numeric)    to authenticated;
 
 -- ---------- STORAGE (recordings bucket) ------------------------------
 insert into storage.buckets (id, name, public)
-  values ('recordings','recordings', true)
+  values ('recordings','recordings', false)
   on conflict (id) do nothing;
 
 drop policy if exists recordings_upload on storage.objects;
@@ -350,7 +375,7 @@ create policy recordings_upload on storage.objects
 
 drop policy if exists recordings_read on storage.objects;
 create policy recordings_read on storage.objects
-  for select to anon, authenticated
+  for select to authenticated
   using (bucket_id = 'recordings');
 
 -- Done.

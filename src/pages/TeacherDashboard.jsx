@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase, rpc } from '../lib/supabase'
 
@@ -55,13 +55,12 @@ export default function TeacherDashboard() {
   const nav = useNavigate()
   const [user, setUser] = useState(null)
   const [quizzes, setQuizzes] = useState([])
-  const [active, setActive] = useState(null) // selected quiz
+  const [active, setActive] = useState(null)
   const [questions, setQuestions] = useState([])
   const [students, setStudents] = useState([])
   const [tab, setTab] = useState('questions')
   const [msg, setMsg] = useState('')
 
-  // ---- auth gate ----
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (!data.session) { nav('/teacher/login'); return }
@@ -89,11 +88,8 @@ export default function TeacherDashboard() {
     ])
     setQuestions(qs || []); setStudents(st || [])
   }
-  async function openQuiz(q) {
-    setActive(q); setTab('questions'); await reloadData(q)
-  }
+  async function openQuiz(q) { setActive(q); setTab('questions'); await reloadData(q) }
   async function refreshActive() { if (active) await reloadData(active) }
-
   async function logout() { await supabase.auth.signOut(); nav('/teacher/login') }
 
   if (!user) return null
@@ -109,7 +105,6 @@ export default function TeacherDashboard() {
       </div>
 
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        {/* Sidebar: quizzes */}
         <div style={{ width: 300, borderRight: '2px solid #131311', padding: 20, overflowY: 'auto' }}>
           <NewQuiz onCreated={loadQuizzes} teacherId={user.id} setMsg={setMsg} />
           <div className="label" style={{ margin: '22px 0 10px' }}>Your quizzes</div>
@@ -126,7 +121,6 @@ export default function TeacherDashboard() {
           {!quizzes.length && <p style={{ fontSize: 13, color: '#757064' }}>No quizzes yet — create one above.</p>}
         </div>
 
-        {/* Main */}
         <div style={{ flex: 1, padding: 32, overflowY: 'auto' }}>
           {!active && <p style={{ color: '#757064' }}>Select or create a quiz to begin.</p>}
           {active && (
@@ -199,7 +193,7 @@ function NewQuiz({ onCreated, teacherId, setMsg }) {
   )
 }
 
-// ---------- Quiz panel (questions + results) ----------
+// ---------- Quiz panel ----------
 function QuizPanel({ quiz, questions, students, tab, setTab, onChange, onQuizChange }) {
   const link = `${window.location.origin}/quiz/${quiz.id}`
   const needed = quiz.num_students * quiz.questions_per_student
@@ -226,13 +220,11 @@ function QuizPanel({ quiz, questions, students, tab, setTab, onChange, onQuizCha
         </button>
       </div>
 
-      {/* Share link */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '20px 0', flexWrap: 'wrap' }}>
         <code style={{ background: '#fff', border: '2px solid #131311', padding: '12px 14px', fontFamily: "'Space Mono',monospace", fontSize: 13 }}>{link}</code>
         <button className="btn" onClick={copyLink} style={{ padding: '12px 16px' }}>COPY LINK</button>
       </div>
 
-      {/* Tabs */}
       <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #131311', marginBottom: 24 }}>
         {['questions', 'results'].map((t) => (
           <button key={t} onClick={() => setTab(t)}
@@ -294,7 +286,6 @@ function AddQuestion({ quizId, allowedTypes, onChange }) {
   const [correct, setCorrect] = useState('A')
   const [points, setPoints] = useState(1)
 
-  // keep the selected type valid if the allowed set changes
   useEffect(() => { if (!types.includes(type)) setType(types[0]) }, [allowedTypes]) // eslint-disable-line
 
   async function add() {
@@ -366,13 +357,10 @@ function BulkAdd({ quizId, allowedTypes, onChange }) {
   return (
     <div style={{ border: '2px solid #131311', padding: 18 }}>
       <div className="label" style={{ marginBottom: 12 }}>Bulk add questions</div>
-
-      {/* File upload */}
       <label className="btn btn-primary" style={{ display: 'inline-block', marginBottom: 12 }}>
         CHOOSE CSV FILE
         <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFile} style={{ display: 'none' }} />
       </label>
-
       <p style={{ fontSize: 12, color: '#757064', marginTop: 0 }}>
         …or paste CSV below. First row = headers: type, prompt, option_a…d, correct (A/B/C/D), points.
       </p>
@@ -389,6 +377,8 @@ function BulkAdd({ quizId, allowedTypes, onChange }) {
 
 // ---------- Results tab ----------
 function ResultsTab({ students, onChange }) {
+  const [sel, setSel] = useState(null) // student being viewed
+
   async function reallow(id) {
     try { await rpc('teacher_reallow_student', { p_student_id: id }); onChange() }
     catch (e) { alert(e.message) }
@@ -400,43 +390,163 @@ function ResultsTab({ students, onChange }) {
 
   return (
     <div>
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-      <span className="label">{students.length} student(s) · updates automatically every few seconds</span>
-      <button className="btn" style={{ padding: '8px 14px' }} onClick={onChange}>↻ REFRESH NOW</button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <span className="label">{students.length} student(s) · updates automatically every few seconds</span>
+        <button className="btn" style={{ padding: '8px 14px' }} onClick={onChange}>↻ REFRESH NOW</button>
+      </div>
+
+      {!students.length
+        ? <p style={{ color: '#757064' }}>No students have started yet.</p>
+        : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+              <thead>
+                <tr style={{ textAlign: 'left', borderBottom: '2px solid #131311' }}>
+                  {['Student', 'Status', 'Score', 'Warnings', 'Actions'].map((h) => (
+                    <th key={h} className="label" style={{ padding: '10px 8px' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {students.map((s) => (
+                  <tr key={s.id} style={{ borderBottom: '1.5px solid #dddbd1' }}>
+                    <td style={{ padding: '12px 8px' }}>
+                      <div style={{ fontWeight: 700 }}>{s.name}</div>
+                      <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064' }}>{s.email}{s.student_id_txt ? ` · ${s.student_id_txt}` : ''}</div>
+                    </td>
+                    <td style={{ padding: '12px 8px' }}>{badge(s)}</td>
+                    <td style={{ padding: '12px 8px', fontFamily: "'Space Mono',monospace" }}>{s.score != null ? `${s.score}/${s.total_points}` : '—'}</td>
+                    <td style={{ padding: '12px 8px', fontFamily: "'Space Mono',monospace", color: s.warnings ? '#e5322d' : '#757064' }}>{s.warnings}</td>
+                    <td style={{ padding: '12px 8px', whiteSpace: 'nowrap' }}>
+                      <button className="btn btn-primary" style={{ padding: '6px 12px', marginRight: 6 }} onClick={() => setSel(s)}>VIEW</button>
+                      <button className="btn" style={{ padding: '6px 12px' }} onClick={() => reallow(s.id)}>RE-ALLOW</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+      {sel && <StudentDetail student={sel} onClose={() => setSel(null)} onGraded={onChange} />}
     </div>
-    {!students.length
-      ? <p style={{ color: '#757064' }}>No students have started yet.</p>
-      : <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-        <thead>
-          <tr style={{ textAlign: 'left', borderBottom: '2px solid #131311' }}>
-            {['Student', 'Status', 'Score', 'Warnings', 'Recordings', ''].map((h) => (
-              <th key={h} className="label" style={{ padding: '10px 8px' }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {students.map((s) => (
-            <tr key={s.id} style={{ borderBottom: '1.5px solid #dddbd1' }}>
-              <td style={{ padding: '12px 8px' }}>
-                <div style={{ fontWeight: 700 }}>{s.name}</div>
-                <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064' }}>{s.email}{s.student_id_txt ? ` · ${s.student_id_txt}` : ''}</div>
-              </td>
-              <td style={{ padding: '12px 8px' }}>{badge(s)}</td>
-              <td style={{ padding: '12px 8px', fontFamily: "'Space Mono',monospace" }}>{s.score != null ? `${s.score}/${s.total_points}` : '—'}</td>
-              <td style={{ padding: '12px 8px', fontFamily: "'Space Mono',monospace", color: s.warnings ? '#e5322d' : '#757064' }}>{s.warnings}</td>
-              <td style={{ padding: '12px 8px' }}>
-                {s.camera_url ? <a href={s.camera_url} target="_blank" rel="noreferrer">camera</a> : '—'}
-                {s.screen_url ? <> · <a href={s.screen_url} target="_blank" rel="noreferrer">screen</a></> : ''}
-              </td>
-              <td style={{ padding: '12px 8px' }}>
-                <button className="btn" style={{ padding: '6px 12px' }} onClick={() => reallow(s.id)}>RE-ALLOW</button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>}
+  )
+}
+
+// ---------- Student detail (videos + answers + grading) ----------
+function StudentDetail({ student, onClose, onGraded }) {
+  const [answers, setAnswers] = useState([])
+  const [camUrl, setCamUrl] = useState(null)
+  const [scrUrl, setScrUrl] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [score, setScore] = useState(student.score)
+
+  useEffect(() => {
+    let alive = true
+    async function load() {
+      setLoading(true)
+      const { data: ans } = await supabase
+        .from('answers')
+        .select('*, questions(prompt,type,options,correct_key,points)')
+        .eq('student_id', student.id)
+      const sign = async (path) => {
+        if (!path) return null
+        const { data } = await supabase.storage.from('recordings').createSignedUrl(path, 3600)
+        return data?.signedUrl || null
+      }
+      const cam = await sign(student.camera_url)
+      const scr = await sign(student.screen_url)
+      if (!alive) return
+      setAnswers(ans || []); setCamUrl(cam); setScrUrl(scr); setLoading(false)
+    }
+    load()
+    return () => { alive = false }
+  }, [student.id]) // eslint-disable-line
+
+  async function grade(answerId, awarded) {
+    try {
+      const res = await rpc('teacher_grade_answer', { p_answer_id: answerId, p_awarded: awarded })
+      setScore(res.score)
+      setAnswers((a) => a.map((x) => x.id === answerId ? { ...x, awarded, is_correct: awarded > 0 } : x))
+      onGraded && onGraded()
+    } catch (e) { alert(e.message) }
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(19,19,17,.6)', zIndex: 50, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: 24, overflowY: 'auto' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: '#f2f1ec', border: '2px solid #131311', width: 900, maxWidth: '100%', padding: 28, marginTop: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <h2 style={{ fontSize: 28, fontWeight: 800, margin: '0 0 4px', letterSpacing: '-.6px' }}>{student.name}</h2>
+            <div className="label">{student.email}{student.student_id_txt ? ` · ${student.student_id_txt}` : ''} · warnings: {student.warnings}</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 22, fontWeight: 700 }}>{score != null ? `${score}/${student.total_points}` : '—'}</div>
+            <button className="btn" style={{ padding: '6px 14px', marginTop: 6 }} onClick={onClose}>CLOSE ✕</button>
+          </div>
+        </div>
+
+        {loading ? <p style={{ fontFamily: "'Space Mono',monospace" }}>Loading…</p> : (
+          <>
+            {/* Videos */}
+            <div className="label" style={{ margin: '20px 0 8px' }}>Recordings (private — only you)</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              {camUrl
+                ? <div><div className="label" style={{ marginBottom: 4 }}>Camera + mic</div><video src={camUrl} controls style={{ width: '100%', background: '#000' }} /></div>
+                : <div className="label">No camera recording</div>}
+              {scrUrl
+                ? <div><div className="label" style={{ marginBottom: 4 }}>Screen</div><video src={scrUrl} controls style={{ width: '100%', background: '#000' }} /></div>
+                : <div className="label">No screen recording</div>}
+            </div>
+
+            {/* Answers */}
+            <div className="label" style={{ margin: '24px 0 8px' }}>Answers</div>
+            {answers.length === 0 && <p style={{ color: '#757064' }}>No answers recorded.</p>}
+            {answers.map((a) => {
+              const q = a.questions || {}
+              const isMcq = q.type === 'mcq'
+              return (
+                <div key={a.id} style={{ border: '1.5px solid #dddbd1', background: '#fff', padding: 16, marginBottom: 10 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                    <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 11, background: '#131311', color: '#fff', padding: '2px 7px' }}>{(q.type || '').toUpperCase()}</span>
+                    <span style={{ fontWeight: 700 }}>{q.prompt}</span>
+                    <span style={{ marginLeft: 'auto', fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064' }}>{q.points} pt</span>
+                  </div>
+                  <div style={{ fontFamily: q.type === 'code' ? "'Space Mono',monospace" : 'inherit', fontSize: 15, whiteSpace: 'pre-wrap', background: '#f7f6f1', padding: 12, border: '1px solid #eee' }}>
+                    {a.response || <span style={{ color: '#999' }}>(no answer)</span>}
+                  </div>
+
+                  {isMcq ? (
+                    <div style={{ marginTop: 8, fontFamily: "'Space Mono',monospace", fontSize: 13 }}>
+                      {a.is_correct
+                        ? <span style={{ color: '#1f9d55' }}>✓ Correct (+{q.points})</span>
+                        : <span style={{ color: '#e5322d' }}>✗ Wrong · correct answer: {q.correct_key}</span>}
+                    </div>
+                  ) : (
+                    <GradeRow answer={a} maxPoints={q.points || 0} onGrade={grade} />
+                  )}
+                </div>
+              )
+            })}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function GradeRow({ answer, maxPoints, onGrade }) {
+  const [val, setVal] = useState(answer.awarded ?? '')
+  return (
+    <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span className="label">Award points (0–{maxPoints})</span>
+      <input className="field" type="number" min={0} max={maxPoints} value={val}
+        onChange={(e) => setVal(e.target.value)} style={{ width: 90 }} />
+      <button className="btn btn-primary" style={{ padding: '8px 14px' }}
+        onClick={() => onGrade(answer.id, Math.max(0, Math.min(parseFloat(val) || 0, maxPoints)))}>
+        SAVE GRADE
+      </button>
+      {answer.awarded != null && <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#1f9d55' }}>graded: {answer.awarded}</span>}
     </div>
   )
 }

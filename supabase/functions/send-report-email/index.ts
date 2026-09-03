@@ -35,9 +35,18 @@ Deno.serve(async (req) => {
     const { data: teacher } = await admin.auth.admin.getUserById(quiz.teacher_id)
     const teacherEmail = teacher?.user?.email
 
+    // Bucket is private — create signed links (valid 30 days) from the stored paths.
+    const sign = async (path: string | null) => {
+      if (!path) return null
+      const { data } = await admin.storage.from('recordings').createSignedUrl(path, 60 * 60 * 24 * 30)
+      return data?.signedUrl ?? null
+    }
+    const camUrl = await sign(student.camera_url)
+    const scrUrl = await sign(student.screen_url)
+
     const links = [
-      student.camera_url ? `<p>Camera recording: <a href="${student.camera_url}">${student.camera_url}</a></p>` : '',
-      student.screen_url ? `<p>Screen recording: <a href="${student.screen_url}">${student.screen_url}</a></p>` : '',
+      camUrl ? `<p>Camera recording: <a href="${camUrl}">watch</a></p>` : '',
+      scrUrl ? `<p>Screen recording: <a href="${scrUrl}">watch</a></p>` : '',
     ].join('')
 
     const scoreLine = student.score != null

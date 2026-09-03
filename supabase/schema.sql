@@ -15,6 +15,7 @@ create table if not exists quizzes (
   num_students          int  not null default 1,
   questions_per_student int  not null default 1,
   duration_minutes      int  not null default 30,
+  allowed_types         text[] not null default '{mcq,text,code}',
   is_open               boolean not null default true,
   created_at            timestamptz not null default now()
 );

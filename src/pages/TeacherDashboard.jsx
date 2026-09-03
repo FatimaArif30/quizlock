@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase, rpc } from '../lib/supabase'
+
+const ALL_TYPES = ['mcq', 'text', 'code']
 
 // ---- tiny CSV parser (handles quoted fields with commas) ----
 function parseCsv(text) {
@@ -138,14 +140,17 @@ function NewQuiz({ onCreated, teacherId, setMsg }) {
   const [nStu, setNStu] = useState(10)
   const [perStu, setPerStu] = useState(10)
   const [dur, setDur] = useState(30)
+  const [types, setTypes] = useState({ mcq: true, text: true, code: true })
   const needed = (parseInt(nStu) || 0) * (parseInt(perStu) || 0)
+  const chosen = ALL_TYPES.filter((t) => types[t])
 
   async function create() {
     if (!title.trim()) return
+    if (!chosen.length) { setMsg('Pick at least one question type.'); return }
     const { error } = await supabase.from('quizzes').insert({
       teacher_id: teacherId, title: title.trim(),
       num_students: parseInt(nStu) || 1, questions_per_student: parseInt(perStu) || 1,
-      duration_minutes: parseInt(dur) || 30,
+      duration_minutes: parseInt(dur) || 30, allowed_types: chosen,
     })
     if (error) { setMsg(error.message); return }
     setTitle(''); setOpen(false); onCreated()
@@ -162,7 +167,18 @@ function NewQuiz({ onCreated, teacherId, setMsg }) {
       <label className="label">Questions per student?</label>
       <input className="field" type="number" min={1} value={perStu} onChange={(e) => setPerStu(e.target.value)} style={{ margin: '4px 0 10px' }} />
       <label className="label">Time limit (minutes)</label>
-      <input className="field" type="number" min={1} value={dur} onChange={(e) => setDur(e.target.value)} style={{ margin: '4px 0 12px' }} />
+      <input className="field" type="number" min={1} value={dur} onChange={(e) => setDur(e.target.value)} style={{ margin: '4px 0 10px' }} />
+
+      <label className="label">Question types in this quiz</label>
+      <div style={{ display: 'flex', gap: 8, margin: '6px 0 12px' }}>
+        {ALL_TYPES.map((t) => (
+          <button type="button" key={t} onClick={() => setTypes({ ...types, [t]: !types[t] })} className="btn"
+            style={{ padding: '8px 12px', flex: 1, background: types[t] ? '#131311' : 'transparent', color: types[t] ? '#f2f1ec' : '#131311' }}>
+            {t.toUpperCase()} {types[t] ? '✓' : ''}
+          </button>
+        ))}
+      </div>
+
       <div style={{ background: '#131311', color: '#f2f1ec', padding: '10px 12px', fontFamily: "'Space Mono',monospace", fontSize: 12, marginBottom: 12 }}>
         You'll need <b style={{ color: '#f0645f' }}>{needed}</b> questions total.
       </div>
@@ -178,6 +194,7 @@ function NewQuiz({ onCreated, teacherId, setMsg }) {
 function QuizPanel({ quiz, questions, students, tab, setTab, onChange, onQuizChange }) {
   const link = `${window.location.origin}/quiz/${quiz.id}`
   const needed = quiz.num_students * quiz.questions_per_student
+  const allowedTypes = (quiz.allowed_types && quiz.allowed_types.length) ? quiz.allowed_types : ALL_TYPES
 
   async function toggleOpen() {
     const { data } = await supabase.from('quizzes').update({ is_open: !quiz.is_open }).eq('id', quiz.id).select().single()
@@ -190,7 +207,9 @@ function QuizPanel({ quiz, questions, students, tab, setTab, onChange, onQuizCha
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-1.2px', margin: '0 0 8px' }}>{quiz.title}</h1>
-          <div className="label">{quiz.num_students} students · {quiz.questions_per_student} questions each · {quiz.duration_minutes} min</div>
+          <div className="label">
+            {quiz.num_students} students · {quiz.questions_per_student} each · {quiz.duration_minutes} min · types: {allowedTypes.map((t) => t.toUpperCase()).join(', ')}
+          </div>
         </div>
         <button className="btn" onClick={toggleOpen}
           style={{ background: quiz.is_open ? '#1f9d55' : '#fff', color: quiz.is_open ? '#fff' : '#131311', borderColor: quiz.is_open ? '#1f9d55' : '#131311' }}>
@@ -216,14 +235,14 @@ function QuizPanel({ quiz, questions, students, tab, setTab, onChange, onQuizCha
       </div>
 
       {tab === 'questions'
-        ? <QuestionsTab quiz={quiz} questions={questions} needed={needed} onChange={onChange} />
+        ? <QuestionsTab quiz={quiz} questions={questions} needed={needed} allowedTypes={allowedTypes} onChange={onChange} />
         : <ResultsTab students={students} onChange={onChange} />}
     </div>
   )
 }
 
 // ---------- Questions tab ----------
-function QuestionsTab({ quiz, questions, needed, onChange }) {
+function QuestionsTab({ quiz, questions, needed, allowedTypes, onChange }) {
   const enough = questions.length >= needed
   return (
     <div>
@@ -234,8 +253,8 @@ function QuestionsTab({ quiz, questions, needed, onChange }) {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 30, alignItems: 'start' }}>
-        <AddQuestion quizId={quiz.id} onChange={onChange} />
-        <BulkAdd quizId={quiz.id} onChange={onChange} />
+        <AddQuestion quizId={quiz.id} allowedTypes={allowedTypes} onChange={onChange} />
+        <BulkAdd quizId={quiz.id} allowedTypes={allowedTypes} onChange={onChange} />
       </div>
 
       <div className="label" style={{ margin: '30px 0 12px' }}>Questions ({questions.length})</div>
@@ -258,12 +277,16 @@ function QuestionsTab({ quiz, questions, needed, onChange }) {
   )
 }
 
-function AddQuestion({ quizId, onChange }) {
-  const [type, setType] = useState('mcq')
+function AddQuestion({ quizId, allowedTypes, onChange }) {
+  const types = (allowedTypes && allowedTypes.length) ? allowedTypes : ALL_TYPES
+  const [type, setType] = useState(types[0])
   const [prompt, setPrompt] = useState('')
   const [opts, setOpts] = useState({ A: '', B: '', C: '', D: '' })
   const [correct, setCorrect] = useState('A')
   const [points, setPoints] = useState(1)
+
+  // keep the selected type valid if the allowed set changes
+  useEffect(() => { if (!types.includes(type)) setType(types[0]) }, [allowedTypes]) // eslint-disable-line
 
   async function add() {
     if (!prompt.trim()) return
@@ -282,7 +305,7 @@ function AddQuestion({ quizId, onChange }) {
     <div style={{ border: '2px solid #131311', padding: 18 }}>
       <div className="label" style={{ marginBottom: 12 }}>Add one question</div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-        {['mcq', 'text', 'code'].map((t) => (
+        {types.map((t) => (
           <button key={t} onClick={() => setType(t)} className="btn" style={{ padding: '8px 12px', background: type === t ? '#e5322d' : 'transparent', color: type === t ? '#fff' : '#131311', borderColor: type === t ? '#e5322d' : '#131311' }}>{t.toUpperCase()}</button>
         ))}
       </div>
@@ -303,27 +326,48 @@ function AddQuestion({ quizId, onChange }) {
   )
 }
 
-function BulkAdd({ quizId, onChange }) {
+function BulkAdd({ quizId, allowedTypes, onChange }) {
   const [text, setText] = useState('')
   const [msg, setMsg] = useState('')
+  const fileRef = useRef(null)
   const template = 'type,prompt,option_a,option_b,option_c,option_d,correct,points\nmcq,"Capital of France?",Paris,London,Rome,Berlin,A,1\ntext,"Explain gravity.",,,,,,2\ncode,"Reverse a string in Python.",,,,,,3'
+
+  function onFile(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => { setText(String(reader.result || '')); setMsg(`Loaded "${file.name}". Click Import.`) }
+    reader.readAsText(file)
+  }
 
   async function importAll() {
     const rows = csvToQuestions(text)
     if (!rows.length) { setMsg('No questions found — check the format.'); return }
-    const payload = rows.map((r) => ({ quiz_id: quizId, ...r }))
+    const allowed = new Set(allowedTypes && allowedTypes.length ? allowedTypes : ALL_TYPES)
+    const kept = rows.filter((r) => allowed.has(r.type))
+    const skipped = rows.length - kept.length
+    if (!kept.length) { setMsg(`Skipped all ${rows.length} — this quiz only allows: ${[...allowed].join(', ')}.`); return }
+    const payload = kept.map((r) => ({ quiz_id: quizId, ...r }))
     const { error } = await supabase.from('questions').insert(payload)
     if (error) { setMsg(error.message); return }
-    setMsg(`Imported ${rows.length} question(s).`); setText(''); onChange()
+    setMsg(`Imported ${kept.length} question(s)${skipped ? ` · skipped ${skipped} (type not allowed here)` : ''}.`)
+    setText(''); if (fileRef.current) fileRef.current.value = ''; onChange()
   }
 
   return (
     <div style={{ border: '2px solid #131311', padding: 18 }}>
-      <div className="label" style={{ marginBottom: 12 }}>Bulk add (paste CSV)</div>
+      <div className="label" style={{ marginBottom: 12 }}>Bulk add questions</div>
+
+      {/* File upload */}
+      <label className="btn btn-primary" style={{ display: 'inline-block', marginBottom: 12 }}>
+        CHOOSE CSV FILE
+        <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFile} style={{ display: 'none' }} />
+      </label>
+
       <p style={{ fontSize: 12, color: '#757064', marginTop: 0 }}>
-        First row = headers. Columns: type, prompt, option_a…d, correct (A/B/C/D), points.
+        …or paste CSV below. First row = headers: type, prompt, option_a…d, correct (A/B/C/D), points.
       </p>
-      <textarea className="field" style={{ minHeight: 150, fontFamily: "'Space Mono',monospace", fontSize: 12 }}
+      <textarea className="field" style={{ minHeight: 130, fontFamily: "'Space Mono',monospace", fontSize: 12 }}
         placeholder={template} value={text} onChange={(e) => setText(e.target.value)} />
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
         <button className="btn btn-primary" onClick={importAll}>IMPORT →</button>

@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; }
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: #f2f1ec;
+  color: #131311;
+  font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Simple utility for the sharp editorial buttons */
+.btn {
+  font-family: 'Space Mono', monospace;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 1px;
+  padding: 14px 26px;
+  cursor: pointer;
+  border: 2px solid #131311;
+  background: transparent;
+  color: #131311;
+  transition: transform .05s ease;
+}
+.btn:active { transform: translateY(1px); }
+.btn-primary { background: #e5322d; border-color: #e5322d; color: #fff; }
+.btn-primary:hover { background: #c72620; border-color: #c72620; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+
+.field {
+  width: 100%;
+  font-family: 'Space Mono', monospace;
+  font-size: 15px;
+  padding: 14px 16px;
+  border: 2px solid #131311;
+  background: #fff;
+  color: #131311;
+  box-sizing: border-box;
+}
+.field:focus { outline: 2px solid #e5322d; outline-offset: 1px; }
+
+.label { font-family: 'Space Mono', monospace; font-size: 12px; letter-spacing: 1px; color: #757064; text-transform: uppercase; }

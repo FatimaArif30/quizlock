@@ -1,0 +1,5 @@
+type,prompt,option_a,option_b,option_c,option_d,correct,points
+mcq,"Which planet is known as the Red Planet?",Venus,Mars,Jupiter,Saturn,B,1
+mcq,"What is 7 x 8?",54,56,58,64,B,1
+text,"In your own words, explain photosynthesis.",,,,,,2
+code,"Write a function that returns the largest number in a list.",,,,,,3

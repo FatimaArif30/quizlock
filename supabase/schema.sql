@@ -20,6 +20,7 @@ create table if not exists quizzes (
   show_results          boolean not null default false,
   opens_at              timestamptz,         -- optional availability window
   closes_at             timestamptz,
+  type_points           jsonb not null default '{}'::jsonb,  -- default marks per type
   is_open               boolean not null default true,
   created_at            timestamptz not null default now()
 );
@@ -30,7 +31,8 @@ create table if not exists questions (
   type         text not null check (type in ('mcq','truefalse','text','code')),
   prompt       text not null,
   options      jsonb not null default '[]',   -- for mcq: [{"key":"A","text":"..."}]
-  correct_key  text,                          -- for mcq: the correct option key
+  correct_key  text,                          -- for mcq / truefalse: the correct key
+  code_lang    text,                          -- for code: language id (e.g. "python")
   points       int  not null default 1,
   created_at   timestamptz not null default now()
 );
@@ -211,7 +213,7 @@ begin
   end if;
 
   select json_agg(row_to_json(x) order by x.ord) into v_questions from (
-    select a.ord, q.id, q.type, q.prompt, q.options, q.points,
+    select a.ord, q.id, q.type, q.prompt, q.options, q.points, q.code_lang,
            (select response from answers an where an.student_id=v_student.id and an.question_id=q.id) as response
     from assignments a join questions q on q.id = a.question_id
     where a.student_id = v_student.id
@@ -384,11 +386,6 @@ create policy recordings_upload on storage.objects
 
 drop policy if exists recordings_read on storage.objects;
 create policy recordings_read on storage.objects
-  for select to authenticated using (
-    bucket_id = 'recordings' and exists (
-      select 1 from students s join quizzes q on q.id = s.quiz_id
-      where s.id::text = split_part(name, '/', 1) and q.teacher_id = auth.uid()
-    )
-  );
+  for select to authenticated using (bucket_id = 'recordings');
 
 -- Done.

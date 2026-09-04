@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase, rpc } from '../lib/supabase'
+import { LANGS } from '../lib/languages'
+import CodeEditor from '../components/CodeEditor'
 
 const ALL_TYPES = ['mcq', 'truefalse', 'text', 'code']
 const TYPE_LABEL = { mcq: 'MCQ', truefalse: 'TRUE/FALSE', text: 'TEXT', code: 'CODE' }
@@ -48,7 +50,7 @@ function csvToQuestions(text) {
     if (!prompt) continue
     if (!ALL_TYPES.includes(type)) { bad++; continue } // skip unknown types instead of failing the batch
     const points = parseInt(get('points'), 10) || 1
-    let options = [], correct_key = null
+    let options = [], correct_key = null, code_lang = null
     if (type === 'mcq') {
       const map = { A: get('option_a'), B: get('option_b'), C: get('option_c'), D: get('option_d') }
       options = Object.entries(map).filter(([, v]) => v).map(([key, text]) => ({ key, text }))
@@ -56,8 +58,12 @@ function csvToQuestions(text) {
     } else if (type === 'truefalse') {
       options = [{ key: 'True', text: 'True' }, { key: 'False', text: 'False' }]
       correct_key = (get('correct') || '').trim().toLowerCase().startsWith('t') ? 'True' : 'False'
+    } else if (type === 'code') {
+      let raw = (get('language') || 'python').toLowerCase().trim()
+      if (raw === 'c++') raw = 'cpp'; if (raw === 'bash') raw = 'shell'; if (raw === 'js') raw = 'javascript'
+      code_lang = LANGS.some((l) => l.monaco === raw) ? raw : 'python'
     }
-    out.push({ type, prompt, options, correct_key, points })
+    out.push({ type, prompt, options, correct_key, code_lang, points })
   }
   return { ok: out, bad }
 }
@@ -176,6 +182,7 @@ function QuizForm({ initial, submitLabel, onSubmit, onCancel }) {
   const [types, setTypes] = useState({ mcq: true, truefalse: true, text: true, code: true, ...(initial.typesMap || {}) })
   const [openAt, setOpenAt] = useState(toLocalInput(initial.opens_at))
   const [closeAt, setCloseAt] = useState(toLocalInput(initial.closes_at))
+  const [typePts, setTypePts] = useState({ mcq: 1, truefalse: 1, text: 2, code: 5, ...(initial.type_points || {}) })
   const [passOn, setPassOn] = useState(initial.pass_score != null)
   const [passScore, setPassScore] = useState(initial.pass_score ?? 50)
   const [showResults, setShowResults] = useState(!!initial.show_results)
@@ -192,6 +199,7 @@ function QuizForm({ initial, submitLabel, onSubmit, onCancel }) {
       show_results: showResults,
       opens_at: openAt ? new Date(openAt).toISOString() : null,
       closes_at: closeAt ? new Date(closeAt).toISOString() : null,
+      type_points: Object.fromEntries(chosen.map((t) => [t, parseInt(typePts[t]) || 1])),
     })
   }
 
@@ -214,6 +222,19 @@ function QuizForm({ initial, submitLabel, onSubmit, onCancel }) {
           </button>
         ))}
       </div>
+
+      {chosen.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <label className="label">Default marks per type (editable per question later)</label>
+          {chosen.map((t) => (
+            <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+              <span className="label" style={{ width: 92 }}>{TYPE_LABEL[t]}</span>
+              <input className="field" type="number" min={1} value={typePts[t] ?? 1} onChange={(e) => setTypePts({ ...typePts, [t]: e.target.value })} style={{ width: 100 }} />
+              <span className="label">marks</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <label className="label">Opens at (optional)</label>
       <input className="field" type="datetime-local" value={openAt} onChange={(e) => setOpenAt(e.target.value)} style={{ margin: '4px 0 10px' }} />
@@ -370,7 +391,7 @@ function QuestionsTab({ quiz, questions, needed, allowedTypes, assignedIds, toas
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 30, alignItems: 'start' }}>
-        <AddQuestion quizId={quiz.id} allowedTypes={allowedTypes} toast={toast} onChange={onChange} />
+        <AddQuestion quizId={quiz.id} allowedTypes={allowedTypes} typePoints={quiz.type_points || {}} toast={toast} onChange={onChange} />
         <BulkAdd quizId={quiz.id} allowedTypes={allowedTypes} toast={toast} onChange={onChange} />
       </div>
 
@@ -390,6 +411,9 @@ function QuestionsTab({ quiz, questions, needed, allowedTypes, assignedIds, toas
               )}
               {q.type === 'truefalse' && (
                 <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064', marginTop: 6 }}>True / False · correct: <b>{q.correct_key}</b></div>
+              )}
+              {q.type === 'code' && (
+                <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064', marginTop: 6 }}>Code · language: <b>{(LANGS.find((l) => l.monaco === q.code_lang) || {}).label || q.code_lang || 'Python'}</b></div>
               )}
             </div>
             <div style={{ position: 'relative' }}>
@@ -427,6 +451,7 @@ function QuestionEditor({ question, allowedTypes, toast, onClose, onSaved }) {
   const [prompt, setPrompt] = useState(question.prompt)
   const [correct, setCorrect] = useState(question.type === 'mcq' ? (question.correct_key || 'A') : 'A')
   const [tf, setTf] = useState(question.type === 'truefalse' ? (question.correct_key || 'True') : 'True')
+  const [codeLang, setCodeLang] = useState(question.code_lang || 'python')
   const [points, setPoints] = useState(question.points || 1)
   const [busy, setBusy] = useState(false)
   const [opts, setOpts] = useState(() => {
@@ -443,7 +468,7 @@ function QuestionEditor({ question, allowedTypes, toast, onClose, onSaved }) {
 
   async function save() {
     if (!prompt.trim()) { toast('Enter a prompt.', 'err'); return }
-    const built = buildQuestion(type, prompt, opts, correct, tf, points)
+    const built = buildQuestion(type, prompt, opts, correct, tf, points, codeLang)
     if (built.error) { toast(built.error, 'err'); return }
     setBusy(true)
     const { error } = await supabase.from('questions').update(built.row).eq('id', question.id)
@@ -463,6 +488,7 @@ function QuestionEditor({ question, allowedTypes, toast, onClose, onSaved }) {
         <div style={{ marginTop: 6 }}><TypePicker types={types} type={type} setType={setType} /></div>
         <label className="label">Prompt</label>
         <textarea className="field" value={prompt} onChange={(e) => setPrompt(e.target.value)} style={{ minHeight: 80, margin: '6px 0 14px' }} />
+        {type === 'code' && <LangPicker codeLang={codeLang} setCodeLang={setCodeLang} />}
         {type === 'truefalse' && (<div style={{ marginBottom: 14 }}><label className="label">Correct answer</label><TrueFalsePicker tf={tf} setTf={setTf} /></div>)}
         {type === 'mcq' && (
           <div style={{ marginBottom: 14 }}>
@@ -486,7 +512,7 @@ function QuestionEditor({ question, allowedTypes, toast, onClose, onSaved }) {
   )
 }
 
-function buildQuestion(type, prompt, opts, correct, tf, points) {
+function buildQuestion(type, prompt, opts, correct, tf, points, codeLang) {
   let options = [], correct_key = null
   if (type === 'mcq') {
     options = Object.entries(opts).filter(([, v]) => v.trim()).map(([key, text]) => ({ key, text: text.trim() }))
@@ -496,7 +522,18 @@ function buildQuestion(type, prompt, opts, correct, tf, points) {
     options = [{ key: 'True', text: 'True' }, { key: 'False', text: 'False' }]
     correct_key = tf
   }
-  return { row: { type, prompt: prompt.trim(), options, correct_key, points: parseInt(points) || 1 } }
+  return { row: { type, prompt: prompt.trim(), options, correct_key, code_lang: type === 'code' ? (codeLang || 'python') : null, points: parseInt(points) || 1 } }
+}
+
+function LangPicker({ codeLang, setCodeLang }) {
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <label className="label">Language students code in</label>
+      <select className="field" value={codeLang} onChange={(e) => setCodeLang(e.target.value)} style={{ marginTop: 4 }}>
+        {LANGS.map((l) => <option key={l.monaco} value={l.monaco}>{l.label}</option>)}
+      </select>
+    </div>
+  )
 }
 
 function TypePicker({ types, type, setType }) {
@@ -521,20 +558,22 @@ function TrueFalsePicker({ tf, setTf }) {
   )
 }
 
-function AddQuestion({ quizId, allowedTypes, toast, onChange }) {
+function AddQuestion({ quizId, allowedTypes, typePoints, toast, onChange }) {
   const types = (allowedTypes && allowedTypes.length) ? allowedTypes : ALL_TYPES
   const [type, setType] = useState(types[0])
   const [prompt, setPrompt] = useState('')
   const [opts, setOpts] = useState({ A: '', B: '', C: '', D: '' })
   const [correct, setCorrect] = useState('A')
   const [tf, setTf] = useState('True')
-  const [points, setPoints] = useState(1)
+  const [codeLang, setCodeLang] = useState('python')
+  const [points, setPoints] = useState((typePoints && typePoints[types[0]]) ?? 1)
 
   useEffect(() => { if (!types.includes(type)) setType(types[0]) }, [allowedTypes]) // eslint-disable-line
+  useEffect(() => { if (typePoints && typePoints[type] != null) setPoints(typePoints[type]) }, [type]) // eslint-disable-line
 
   async function add() {
     if (!prompt.trim()) { toast('Enter a prompt.', 'err'); return }
-    const built = buildQuestion(type, prompt, opts, correct, tf, points)
+    const built = buildQuestion(type, prompt, opts, correct, tf, points, codeLang)
     if (built.error) { toast(built.error, 'err'); return }
     const { error } = await supabase.from('questions').insert({ quiz_id: quizId, ...built.row })
     if (error) { toast(error.message, 'err'); return }
@@ -546,6 +585,7 @@ function AddQuestion({ quizId, allowedTypes, toast, onChange }) {
       <div className="label" style={{ marginBottom: 12 }}>Add one question</div>
       <TypePicker types={types} type={type} setType={setType} />
       <textarea className="field" placeholder="Question prompt" value={prompt} onChange={(e) => setPrompt(e.target.value)} style={{ minHeight: 70, marginBottom: 10 }} />
+      {type === 'code' && <LangPicker codeLang={codeLang} setCodeLang={setCodeLang} />}
       {type === 'truefalse' && (<><label className="label">Correct answer</label><TrueFalsePicker tf={tf} setTf={setTf} /></>)}
       {type === 'mcq' && ['A', 'B', 'C', 'D'].map((k) => (
         <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -746,7 +786,7 @@ function StudentDetail({ student, onClose, onGraded, toast }) {
     async function load() {
       setLoading(true)
       const { data: ans } = await supabase.from('answers')
-        .select('*, questions(prompt,type,options,correct_key,points)').eq('student_id', student.id)
+        .select('*, questions(prompt,type,options,correct_key,points,code_lang)').eq('student_id', student.id)
       const sign = async (path) => {
         if (!path) return null
         const { data } = await supabase.storage.from('recordings').createSignedUrl(path, 3600)
@@ -806,9 +846,13 @@ function StudentDetail({ student, onClose, onGraded, toast }) {
                     <span style={{ fontWeight: 700 }}>{q.prompt}</span>
                     <span style={{ marginLeft: 'auto', fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064' }}>{q.points} pt</span>
                   </div>
-                  <div style={{ fontFamily: q.type === 'code' ? "'Space Mono',monospace" : 'inherit', fontSize: 15, whiteSpace: 'pre-wrap', background: '#f7f6f1', padding: 12, border: '1px solid #eee' }}>
-                    {a.response || <span style={{ color: '#999' }}>(no answer)</span>}
-                  </div>
+                  {q.type === 'code'
+                    ? <CodeEditor langId={q.code_lang} value={a.response || ''} readOnly height={220} />
+                    : (
+                      <div style={{ fontSize: 15, whiteSpace: 'pre-wrap', background: '#f7f6f1', padding: 12, border: '1px solid #eee' }}>
+                        {a.response || <span style={{ color: '#999' }}>(no answer)</span>}
+                      </div>
+                    )}
                   {autoGraded ? (
                     <div style={{ marginTop: 8, fontFamily: "'Space Mono',monospace", fontSize: 13 }}>
                       {a.is_correct ? <span style={{ color: '#1f9d55' }}>✓ Correct (+{q.points})</span>

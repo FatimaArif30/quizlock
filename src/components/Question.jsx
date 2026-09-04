@@ -1,3 +1,5 @@
+import CodeEditor from './CodeEditor'
+
 // Renders one question. Supports: mcq, truefalse, text, code.
 export default function Question({ q, value, onChange }) {
   if (q.type === 'truefalse') {
@@ -58,16 +60,7 @@ export default function Question({ q, value, onChange }) {
   }
 
   if (q.type === 'code') {
-    return (
-      <textarea
-        className="field"
-        style={{ fontFamily: "'Space Mono',monospace", minHeight: 260, lineHeight: 1.5, whiteSpace: 'pre', tabSize: 2 }}
-        placeholder="// write your code here"
-        spellCheck={false}
-        value={value || ''}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    )
+    return <CodeEditor langId={q.code_lang} value={value} onChange={onChange} height={340} />
   }
 
   // default: short/long text

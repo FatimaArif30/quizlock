@@ -3,7 +3,6 @@
 export const LANGS = [
   { label: 'Python',     monaco: 'python',     piston: 'python' },
   { label: 'JavaScript', monaco: 'javascript', piston: 'javascript' },
-  { label: 'TypeScript', monaco: 'typescript', piston: 'typescript' },
   { label: 'Java',       monaco: 'java',       piston: 'java' },
   { label: 'C',          monaco: 'c',          piston: 'c' },
   { label: 'C++',        monaco: 'cpp',        piston: 'c++' },

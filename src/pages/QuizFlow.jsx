@@ -14,6 +14,7 @@ const ERRORS = {
   blocked: 'Your quiz is locked because you left the screen. Ask your teacher to re-allow you.',
   not_enough_questions: "The teacher hasn't added enough questions yet. Please tell them.",
   student_id_required: 'Please enter your Student ID — it is required.',
+  not_open_yet: 'This quiz has not opened yet. Please come back at the start time.',
   bad_token: 'Your session expired. Please start again.',
 }
 const friendly = (e) => ERRORS[e] || e || 'Something went wrong.'
@@ -30,6 +31,7 @@ export default function QuizFlow() {
   const [busy, setBusy] = useState(false)
   const [warnMsg, setWarnMsg] = useState('')
   const [showReview, setShowReview] = useState(false)
+  const [consent, setConsent] = useState(false)
   const [result, setResult] = useState(null)
   const [uploadNote, setUploadNote] = useState('Uploading your recording…')
 
@@ -159,10 +161,14 @@ export default function QuizFlow() {
             <li>You get <b>one warning</b>. Leaving again submits your quiz automatically.</li>
             <li>Your answers <b>save automatically</b> — a refresh won't lose them.</li>
           </ul>
-          <p style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064', margin: '14px 0 22px' }}>
+          <p style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064', margin: '14px 0 16px' }}>
             When you click begin, your browser will ask to share your screen — choose your <b>entire screen</b>.
           </p>
-          <button className="btn btn-primary" style={{ width: '100%' }} disabled={busy} onClick={begin}>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, margin: '0 0 18px', cursor: 'pointer', fontSize: 14, lineHeight: 1.4 }}>
+            <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ marginTop: 3 }} />
+            <span>I understand and <b>consent</b> to my camera, microphone and screen being recorded during this exam. The recording is private to my teacher.</span>
+          </label>
+          <button className="btn btn-primary" style={{ width: '100%' }} disabled={busy || !consent} onClick={begin}>
             {busy ? 'STARTING…' : 'ALLOW & BEGIN EXAM →'}
           </button>
           {err && <p role="alert" style={{ color: '#c72620', marginTop: 14, fontSize: 14 }}>{err}</p>}
@@ -228,7 +234,7 @@ export default function QuizFlow() {
           </div>
           <h1 style={{ fontWeight: 700, fontSize: 40, lineHeight: 1.1, margin: '26px 0 0', letterSpacing: '-1.2px', maxWidth: 520 }}>{q?.prompt}</h1>
           <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, letterSpacing: 1, color: '#757064', marginTop: 22 }}>
-            {q?.type === 'mcq' ? 'SELECT ONE ANSWER' : q?.type === 'code' ? 'WRITE YOUR CODE' : 'WRITE YOUR ANSWER'}
+            {q?.type === 'mcq' ? 'SELECT ONE ANSWER' : q?.type === 'truefalse' ? 'TRUE OR FALSE?' : q?.type === 'code' ? 'WRITE YOUR CODE' : 'WRITE YOUR ANSWER'}
           </div>
         </div>
 

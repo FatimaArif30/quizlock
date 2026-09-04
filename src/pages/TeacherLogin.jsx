@@ -56,13 +56,13 @@ export default function TeacherLogin() {
           )}
 
           <div style={{ marginBottom: 14 }}>
-            <label className="label">Email</label>
-            <input className="field" type="email" required value={email}
+            <label className="label" htmlFor="t-email">Email</label>
+            <input id="t-email" className="field" type="email" required value={email}
               onChange={(e) => setEmail(e.target.value)} style={{ marginTop: 6 }} />
           </div>
           <div style={{ marginBottom: 22 }}>
-            <label className="label">Password</label>
-            <input className="field" type="password" required minLength={6} value={password}
+            <label className="label" htmlFor="t-pass">Password</label>
+            <input id="t-pass" className="field" type="password" required minLength={6} value={password}
               onChange={(e) => setPassword(e.target.value)} style={{ marginTop: 6 }} />
           </div>
 

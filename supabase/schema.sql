@@ -18,6 +18,8 @@ create table if not exists quizzes (
   allowed_types         text[] not null default '{mcq,text,code}',
   pass_score            int,                 -- passing percent (null = no pass/fail)
   show_results          boolean not null default false,
+  opens_at              timestamptz,         -- optional availability window
+  closes_at             timestamptz,
   is_open               boolean not null default true,
   created_at            timestamptz not null default now()
 );
@@ -25,7 +27,7 @@ create table if not exists quizzes (
 create table if not exists questions (
   id           uuid primary key default gen_random_uuid(),
   quiz_id      uuid not null references quizzes(id) on delete cascade,
-  type         text not null check (type in ('mcq','text','code')),
+  type         text not null check (type in ('mcq','truefalse','text','code')),
   prompt       text not null,
   options      jsonb not null default '[]',   -- for mcq: [{"key":"A","text":"..."}]
   correct_key  text,                          -- for mcq: the correct option key
@@ -138,6 +140,8 @@ begin
   if v_quiz.is_open = false then
     return json_build_object('error','quiz_closed');
   end if;
+  if v_quiz.opens_at is not null and now() < v_quiz.opens_at then return json_build_object('error','not_open_yet'); end if;
+  if v_quiz.closes_at is not null and now() > v_quiz.closes_at then return json_build_object('error','quiz_closed'); end if;
 
   select * into v_student from students
     where quiz_id = p_quiz_id and lower(student_id_txt) = lower(v_sid);
@@ -156,31 +160,8 @@ begin
       returning * into v_student;
   end if;
 
-  -- assign unique questions if this student has none yet
-  v_needed := v_quiz.questions_per_student;
-  if not exists (select 1 from assignments where student_id = v_student.id) then
-    select count(*) into v_available from questions
-      where quiz_id = p_quiz_id
-      and id not in (select question_id from assignments a
-                     join students s on s.id = a.student_id where s.quiz_id = p_quiz_id);
-    if v_available < v_needed then
-      return json_build_object('error','not_enough_questions',
-                               'available', v_available, 'needed', v_needed);
-    end if;
-
-    insert into assignments (student_id, question_id, ord)
-    select v_student.id, q.id, row_number() over ()
-    from (
-      select id from questions
-      where quiz_id = p_quiz_id
-        and id not in (select question_id from assignments a
-                       join students s on s.id = a.student_id where s.quiz_id = p_quiz_id)
-      order by random()
-      limit v_needed
-      for update skip locked
-    ) q;
-  end if;
-
+  -- NOTE: questions are assigned at real start (get_quiz_for_student), not here,
+  -- so a student who registers but never begins doesn't consume the pool.
   return json_build_object(
     'student_id', v_student.id,
     'token', v_student.token,
@@ -197,12 +178,31 @@ declare
   v_student students;
   v_quiz quizzes;
   v_questions json;
+  v_needed int;
+  v_available int;
 begin
   select * into v_student from students where id = p_student_id and token = p_token;
   if v_student.id is null then return json_build_object('error','bad_token'); end if;
   if v_student.status = 'submitted' then return json_build_object('error','already_submitted'); end if;
 
   select * into v_quiz from quizzes where id = v_student.quiz_id;
+  if v_quiz.closes_at is not null and now() > v_quiz.closes_at then return json_build_object('error','quiz_closed'); end if;
+
+  -- assign the unique set on first begin
+  if not exists (select 1 from assignments where student_id = v_student.id) then
+    v_needed := v_quiz.questions_per_student;
+    select count(*) into v_available from questions
+      where quiz_id = v_quiz.id
+      and id not in (select question_id from assignments a join students s on s.id = a.student_id where s.quiz_id = v_quiz.id);
+    if v_available < v_needed then return json_build_object('error','not_enough_questions'); end if;
+    insert into assignments (student_id, question_id, ord)
+    select v_student.id, q.id, row_number() over ()
+    from (
+      select id from questions where quiz_id = v_quiz.id
+        and id not in (select question_id from assignments a join students s on s.id = a.student_id where s.quiz_id = v_quiz.id)
+      order by random() limit v_needed for update skip locked
+    ) q;
+  end if;
 
   if v_student.status = 'registered' then
     update students set status='in_progress',
@@ -292,7 +292,7 @@ begin
       awarded = (case when lower(coalesce(an.response,'')) = lower(coalesce(q.correct_key,'~none~'))
                       then q.points else 0 end)
     from questions q
-    where q.id = an.question_id and q.type = 'mcq' and an.student_id = p_student_id;
+    where q.id = an.question_id and q.type in ('mcq','truefalse') and an.student_id = p_student_id;
 
   select coalesce(sum(q.points),0) into v_total
     from assignments a join questions q on q.id = a.question_id
@@ -384,7 +384,11 @@ create policy recordings_upload on storage.objects
 
 drop policy if exists recordings_read on storage.objects;
 create policy recordings_read on storage.objects
-  for select to authenticated
-  using (bucket_id = 'recordings');
+  for select to authenticated using (
+    bucket_id = 'recordings' and exists (
+      select 1 from students s join quizzes q on q.id = s.quiz_id
+      where s.id::text = split_part(name, '/', 1) and q.teacher_id = auth.uid()
+    )
+  );
 
 -- Done.

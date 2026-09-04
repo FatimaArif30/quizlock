@@ -2,7 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase, rpc } from '../lib/supabase'
 
-const ALL_TYPES = ['mcq', 'text', 'code']
+const ALL_TYPES = ['mcq', 'truefalse', 'text', 'code']
+const TYPE_LABEL = { mcq: 'MCQ', truefalse: 'TRUE/FALSE', text: 'TEXT', code: 'CODE' }
+const toLocalInput = (iso) => {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+}
 
 // ---- tiny CSV parser (handles quoted fields with commas) ----
 function parseCsv(text) {
@@ -36,7 +42,8 @@ function csvToQuestions(text) {
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i]
     const get = (n) => { const j = idx(n); return j >= 0 ? (r[j] || '').trim() : '' }
-    const type = (get('type') || 'mcq').toLowerCase()
+    let type = (get('type') || 'mcq').toLowerCase()
+    if (type === 'tf' || type === 'true/false' || type === 'true false') type = 'truefalse'
     const prompt = get('prompt')
     if (!prompt) continue
     if (!ALL_TYPES.includes(type)) { bad++; continue } // skip unknown types instead of failing the batch
@@ -46,6 +53,9 @@ function csvToQuestions(text) {
       const map = { A: get('option_a'), B: get('option_b'), C: get('option_c'), D: get('option_d') }
       options = Object.entries(map).filter(([, v]) => v).map(([key, text]) => ({ key, text }))
       correct_key = (get('correct') || '').toUpperCase() || null
+    } else if (type === 'truefalse') {
+      options = [{ key: 'True', text: 'True' }, { key: 'False', text: 'False' }]
+      correct_key = (get('correct') || '').trim().toLowerCase().startsWith('t') ? 'True' : 'False'
     }
     out.push({ type, prompt, options, correct_key, points })
   }
@@ -163,7 +173,9 @@ function QuizForm({ initial, submitLabel, onSubmit, onCancel }) {
   const [nStu, setNStu] = useState(initial.num_students ?? 10)
   const [perStu, setPerStu] = useState(initial.questions_per_student ?? 10)
   const [dur, setDur] = useState(initial.duration_minutes ?? 30)
-  const [types, setTypes] = useState({ mcq: true, text: true, code: true, ...(initial.typesMap || {}) })
+  const [types, setTypes] = useState({ mcq: true, truefalse: true, text: true, code: true, ...(initial.typesMap || {}) })
+  const [openAt, setOpenAt] = useState(toLocalInput(initial.opens_at))
+  const [closeAt, setCloseAt] = useState(toLocalInput(initial.closes_at))
   const [passOn, setPassOn] = useState(initial.pass_score != null)
   const [passScore, setPassScore] = useState(initial.pass_score ?? 50)
   const [showResults, setShowResults] = useState(!!initial.show_results)
@@ -178,6 +190,8 @@ function QuizForm({ initial, submitLabel, onSubmit, onCancel }) {
       questions_per_student: parseInt(perStu) || 1, duration_minutes: parseInt(dur) || 30,
       allowed_types: chosen, pass_score: passOn ? (parseInt(passScore) || 0) : null,
       show_results: showResults,
+      opens_at: openAt ? new Date(openAt).toISOString() : null,
+      closes_at: closeAt ? new Date(closeAt).toISOString() : null,
     })
   }
 
@@ -192,14 +206,19 @@ function QuizForm({ initial, submitLabel, onSubmit, onCancel }) {
       <input className="field" type="number" min={1} value={dur} onChange={(e) => setDur(e.target.value)} style={{ margin: '4px 0 10px' }} />
 
       <label className="label">Question types</label>
-      <div style={{ display: 'flex', gap: 8, margin: '6px 0 12px' }}>
+      <div style={{ display: 'flex', gap: 8, margin: '6px 0 12px', flexWrap: 'wrap' }}>
         {ALL_TYPES.map((t) => (
           <button type="button" key={t} onClick={() => setTypes({ ...types, [t]: !types[t] })} className="btn"
-            style={{ padding: '8px 12px', flex: 1, background: types[t] ? '#131311' : 'transparent', color: types[t] ? '#f2f1ec' : '#131311' }}>
-            {t.toUpperCase()} {types[t] ? '✓' : ''}
+            style={{ padding: '8px 10px', flex: '1 1 45%', fontSize: 11, background: types[t] ? '#131311' : 'transparent', color: types[t] ? '#f2f1ec' : '#131311' }}>
+            {TYPE_LABEL[t]} {types[t] ? '✓' : ''}
           </button>
         ))}
       </div>
+
+      <label className="label">Opens at (optional)</label>
+      <input className="field" type="datetime-local" value={openAt} onChange={(e) => setOpenAt(e.target.value)} style={{ margin: '4px 0 10px' }} />
+      <label className="label">Closes at (optional)</label>
+      <input className="field" type="datetime-local" value={closeAt} onChange={(e) => setCloseAt(e.target.value)} style={{ margin: '4px 0 12px' }} />
 
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, cursor: 'pointer' }}>
         <input type="checkbox" checked={passOn} onChange={(e) => setPassOn(e.target.checked)} />
@@ -255,6 +274,10 @@ function QuizPanel({ quiz, questions, students, assignedIds, tab, setTab, toast,
   async function copyLink() { await navigator.clipboard.writeText(link); toast('Link copied ✓') }
   async function del() {
     if (!window.confirm(`Delete "${quiz.title}"? This removes its questions, students, attempts and recordings. This cannot be undone.`)) return
+    // remove recording files from storage first so they aren't orphaned
+    const { data: sts } = await supabase.from('students').select('camera_url,screen_url').eq('quiz_id', quiz.id)
+    const paths = (sts || []).flatMap((s) => [s.camera_url, s.screen_url]).filter(Boolean)
+    if (paths.length) { try { await supabase.storage.from('recordings').remove(paths) } catch { /* ignore */ } }
     const { error } = await supabase.from('quizzes').delete().eq('id', quiz.id)
     if (error) { toast(error.message, 'err'); return }
     toast('Quiz deleted'); onDeleted()
@@ -281,8 +304,9 @@ function QuizPanel({ quiz, questions, students, assignedIds, tab, setTab, toast,
         <div>
           <h1 style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-1.2px', margin: '0 0 8px' }}>{quiz.title}</h1>
           <div className="label">
-            {quiz.num_students} students · {quiz.questions_per_student} each · {quiz.duration_minutes} min · {allowedTypes.map((t) => t.toUpperCase()).join(', ')}
+            {quiz.num_students} students · {quiz.questions_per_student} each · {quiz.duration_minutes} min · {allowedTypes.map((t) => TYPE_LABEL[t] || t.toUpperCase()).join(', ')}
             {quiz.pass_score != null ? ` · pass ${quiz.pass_score}%` : ''}{quiz.show_results ? ' · results shown' : ''}
+            {(quiz.opens_at || quiz.closes_at) ? ' · scheduled' : ''}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -356,13 +380,16 @@ function QuestionsTab({ quiz, questions, needed, allowedTypes, assignedIds, toas
         return (
           <div key={q.id} style={{ border: '1.5px solid #dddbd1', padding: 16, marginBottom: 10, background: '#fff', display: 'flex', justifyContent: 'space-between', gap: 16 }}>
             <div>
-              <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 11, background: '#131311', color: '#fff', padding: '2px 7px', marginRight: 8 }}>{q.type.toUpperCase()}</span>
+              <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 11, background: '#131311', color: '#fff', padding: '2px 7px', marginRight: 8 }}>{TYPE_LABEL[q.type] || q.type.toUpperCase()}</span>
               {locked && <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 11, background: '#c9781f', color: '#fff', padding: '2px 7px', marginRight: 8 }}>LOCKED</span>}
               <span style={{ fontWeight: 600 }}>{i + 1}. {q.prompt}</span>
               {q.type === 'mcq' && (
                 <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064', marginTop: 6 }}>
                   {(q.options || []).map((o) => `${o.key}) ${o.text}`).join('   ')} · correct: <b>{q.correct_key}</b>
                 </div>
+              )}
+              {q.type === 'truefalse' && (
+                <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064', marginTop: 6 }}>True / False · correct: <b>{q.correct_key}</b></div>
               )}
             </div>
             <div style={{ position: 'relative' }}>
@@ -398,7 +425,8 @@ function QuestionEditor({ question, allowedTypes, toast, onClose, onSaved }) {
   const types = (allowedTypes && allowedTypes.length) ? allowedTypes : ALL_TYPES
   const [type, setType] = useState(question.type)
   const [prompt, setPrompt] = useState(question.prompt)
-  const [correct, setCorrect] = useState(question.correct_key || 'A')
+  const [correct, setCorrect] = useState(question.type === 'mcq' ? (question.correct_key || 'A') : 'A')
+  const [tf, setTf] = useState(question.type === 'truefalse' ? (question.correct_key || 'True') : 'True')
   const [points, setPoints] = useState(question.points || 1)
   const [busy, setBusy] = useState(false)
   const [opts, setOpts] = useState(() => {
@@ -415,17 +443,10 @@ function QuestionEditor({ question, allowedTypes, toast, onClose, onSaved }) {
 
   async function save() {
     if (!prompt.trim()) { toast('Enter a prompt.', 'err'); return }
-    const options = type === 'mcq'
-      ? Object.entries(opts).filter(([, v]) => v.trim()).map(([key, text]) => ({ key, text: text.trim() }))
-      : []
-    if (type === 'mcq' && (options.length < 2 || !options.some((o) => o.key === correct))) {
-      toast('MCQ needs at least 2 options and a correct answer among them.', 'err'); return
-    }
+    const built = buildQuestion(type, prompt, opts, correct, tf, points)
+    if (built.error) { toast(built.error, 'err'); return }
     setBusy(true)
-    const { error } = await supabase.from('questions').update({
-      type, prompt: prompt.trim(), options,
-      correct_key: type === 'mcq' ? correct : null, points: parseInt(points) || 1,
-    }).eq('id', question.id)
+    const { error } = await supabase.from('questions').update(built.row).eq('id', question.id)
     setBusy(false)
     if (error) { toast(error.message, 'err'); return }
     onSaved()
@@ -439,14 +460,10 @@ function QuestionEditor({ question, allowedTypes, toast, onClose, onSaved }) {
           <button className="btn" style={{ padding: '6px 12px' }} onClick={onClose} autoFocus>CLOSE ✕</button>
         </div>
         <label className="label">Type</label>
-        <div style={{ display: 'flex', gap: 8, margin: '6px 0 14px' }}>
-          {types.map((t) => (
-            <button key={t} onClick={() => setType(t)} className="btn"
-              style={{ padding: '8px 12px', background: type === t ? '#e5322d' : 'transparent', color: type === t ? '#fff' : '#131311', borderColor: type === t ? '#e5322d' : '#131311' }}>{t.toUpperCase()}</button>
-          ))}
-        </div>
+        <div style={{ marginTop: 6 }}><TypePicker types={types} type={type} setType={setType} /></div>
         <label className="label">Prompt</label>
         <textarea className="field" value={prompt} onChange={(e) => setPrompt(e.target.value)} style={{ minHeight: 80, margin: '6px 0 14px' }} />
+        {type === 'truefalse' && (<div style={{ marginBottom: 14 }}><label className="label">Correct answer</label><TrueFalsePicker tf={tf} setTf={setTf} /></div>)}
         {type === 'mcq' && (
           <div style={{ marginBottom: 14 }}>
             <label className="label">Options — select the correct one</label>
@@ -469,28 +486,57 @@ function QuestionEditor({ question, allowedTypes, toast, onClose, onSaved }) {
   )
 }
 
+function buildQuestion(type, prompt, opts, correct, tf, points) {
+  let options = [], correct_key = null
+  if (type === 'mcq') {
+    options = Object.entries(opts).filter(([, v]) => v.trim()).map(([key, text]) => ({ key, text: text.trim() }))
+    correct_key = correct
+    if (options.length < 2 || !options.some((o) => o.key === correct)) return { error: 'MCQ needs at least 2 options and a correct answer among them.' }
+  } else if (type === 'truefalse') {
+    options = [{ key: 'True', text: 'True' }, { key: 'False', text: 'False' }]
+    correct_key = tf
+  }
+  return { row: { type, prompt: prompt.trim(), options, correct_key, points: parseInt(points) || 1 } }
+}
+
+function TypePicker({ types, type, setType }) {
+  return (
+    <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+      {types.map((t) => (
+        <button key={t} onClick={() => setType(t)} className="btn" style={{ padding: '8px 10px', fontSize: 11, background: type === t ? '#e5322d' : 'transparent', color: type === t ? '#fff' : '#131311', borderColor: type === t ? '#e5322d' : '#131311' }}>{TYPE_LABEL[t]}</button>
+      ))}
+    </div>
+  )
+}
+
+function TrueFalsePicker({ tf, setTf }) {
+  return (
+    <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+      {['True', 'False'].map((k) => (
+        <button key={k} onClick={() => setTf(k)} className="btn" style={{ flex: 1, background: tf === k ? '#131311' : 'transparent', color: tf === k ? '#f2f1ec' : '#131311' }}>
+          {k}{tf === k ? ' ✓' : ''}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function AddQuestion({ quizId, allowedTypes, toast, onChange }) {
   const types = (allowedTypes && allowedTypes.length) ? allowedTypes : ALL_TYPES
   const [type, setType] = useState(types[0])
   const [prompt, setPrompt] = useState('')
   const [opts, setOpts] = useState({ A: '', B: '', C: '', D: '' })
   const [correct, setCorrect] = useState('A')
+  const [tf, setTf] = useState('True')
   const [points, setPoints] = useState(1)
 
   useEffect(() => { if (!types.includes(type)) setType(types[0]) }, [allowedTypes]) // eslint-disable-line
 
   async function add() {
     if (!prompt.trim()) { toast('Enter a prompt.', 'err'); return }
-    const options = type === 'mcq'
-      ? Object.entries(opts).filter(([, v]) => v.trim()).map(([key, text]) => ({ key, text: text.trim() }))
-      : []
-    if (type === 'mcq' && (options.length < 2 || !options.some((o) => o.key === correct))) {
-      toast('MCQ needs at least 2 options and a correct answer among them.', 'err'); return
-    }
-    const { error } = await supabase.from('questions').insert({
-      quiz_id: quizId, type, prompt: prompt.trim(), options,
-      correct_key: type === 'mcq' ? correct : null, points: parseInt(points) || 1,
-    })
+    const built = buildQuestion(type, prompt, opts, correct, tf, points)
+    if (built.error) { toast(built.error, 'err'); return }
+    const { error } = await supabase.from('questions').insert({ quiz_id: quizId, ...built.row })
     if (error) { toast(error.message, 'err'); return }
     setPrompt(''); setOpts({ A: '', B: '', C: '', D: '' }); onChange(); toast('Question added')
   }
@@ -498,12 +544,9 @@ function AddQuestion({ quizId, allowedTypes, toast, onChange }) {
   return (
     <div style={{ border: '2px solid #131311', padding: 18 }}>
       <div className="label" style={{ marginBottom: 12 }}>Add one question</div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-        {types.map((t) => (
-          <button key={t} onClick={() => setType(t)} className="btn" style={{ padding: '8px 12px', background: type === t ? '#e5322d' : 'transparent', color: type === t ? '#fff' : '#131311', borderColor: type === t ? '#e5322d' : '#131311' }}>{t.toUpperCase()}</button>
-        ))}
-      </div>
+      <TypePicker types={types} type={type} setType={setType} />
       <textarea className="field" placeholder="Question prompt" value={prompt} onChange={(e) => setPrompt(e.target.value)} style={{ minHeight: 70, marginBottom: 10 }} />
+      {type === 'truefalse' && (<><label className="label">Correct answer</label><TrueFalsePicker tf={tf} setTf={setTf} /></>)}
       {type === 'mcq' && ['A', 'B', 'C', 'D'].map((k) => (
         <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
           <input type="radio" name="correct" checked={correct === k} onChange={() => setCorrect(k)} title="Mark correct" />
@@ -755,18 +798,18 @@ function StudentDetail({ student, onClose, onGraded, toast }) {
             {answers.length === 0 && <p style={{ color: '#757064' }}>No answers recorded.</p>}
             {answers.map((a) => {
               const q = a.questions || {}
-              const isMcq = q.type === 'mcq'
+              const autoGraded = q.type === 'mcq' || q.type === 'truefalse'
               return (
                 <div key={a.id} style={{ border: '1.5px solid #dddbd1', background: '#fff', padding: 16, marginBottom: 10 }}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                    <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 11, background: '#131311', color: '#fff', padding: '2px 7px' }}>{(q.type || '').toUpperCase()}</span>
+                    <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 11, background: '#131311', color: '#fff', padding: '2px 7px' }}>{TYPE_LABEL[q.type] || (q.type || '').toUpperCase()}</span>
                     <span style={{ fontWeight: 700 }}>{q.prompt}</span>
                     <span style={{ marginLeft: 'auto', fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064' }}>{q.points} pt</span>
                   </div>
                   <div style={{ fontFamily: q.type === 'code' ? "'Space Mono',monospace" : 'inherit', fontSize: 15, whiteSpace: 'pre-wrap', background: '#f7f6f1', padding: 12, border: '1px solid #eee' }}>
                     {a.response || <span style={{ color: '#999' }}>(no answer)</span>}
                   </div>
-                  {isMcq ? (
+                  {autoGraded ? (
                     <div style={{ marginTop: 8, fontFamily: "'Space Mono',monospace", fontSize: 13 }}>
                       {a.is_correct ? <span style={{ color: '#1f9d55' }}>✓ Correct (+{q.points})</span>
                         : <span style={{ color: '#e5322d' }}>✗ Wrong · correct answer: {q.correct_key}</span>}

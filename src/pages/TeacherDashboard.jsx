@@ -753,6 +753,7 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
                     <td style={{ padding: '12px 8px' }}>
                       <div style={{ fontWeight: 700 }}>{s.name}</div>
                       <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064' }}>{s.student_id_txt || s.email}</div>
+                      {recFlags(s)}
                     </td>
                     <td style={{ padding: '12px 8px' }}>{badge(s)}</td>
                     <td style={{ padding: '12px 8px', fontFamily: "'Space Mono',monospace" }}>{s.score != null ? `${s.score}/${s.total_points}` : '—'}</td>
@@ -846,13 +847,20 @@ function StudentDetail({ student, onClose, onGraded, toast }) {
             <div className="label" style={{ margin: '20px 0 8px' }}>Recordings (private — only you)</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               {camUrl
-                ? <div><div className="label" style={{ marginBottom: 4 }}>Camera + mic</div><video src={camUrl} controls style={{ width: '100%', background: '#000' }} /></div>
-                : <div className="label">No camera recording</div>}
+                ? <RecordingPlayer label="Camera + mic" src={camUrl} />
+                : <div className="label" style={{ color: '#e5322d', fontWeight: 700 }}>⚠ No camera recording (upload failed or was blocked)</div>}
               {scrUrl
-                ? <div><div className="label" style={{ marginBottom: 4 }}>Screen</div><video src={scrUrl} controls style={{ width: '100%', background: '#000' }} /></div>
+                ? <RecordingPlayer label="Screen" src={scrUrl} />
                 : <div className="label">No screen recording</div>}
             </div>
 
+            <div className="label" style={{ margin: '16px 0 0' }}>
+              Report email: {student.report_email_error
+                ? <span style={{ color: '#e5322d', fontWeight: 700 }}>⚠ failed ({student.report_email_error})</span>
+                : student.report_emailed_at
+                  ? <span style={{ color: '#1f9d55', fontWeight: 700 }}>✓ sent</span>
+                  : <span style={{ color: '#757064' }}>— not recorded (older submission or still sending)</span>}
+            </div>
             <div className="label" style={{ margin: '24px 0 8px' }}>Answers</div>
             {answers.length === 0 && <p style={{ color: '#757064' }}>No answers recorded.</p>}
             {answers.map((a) => {
@@ -884,6 +892,73 @@ function StudentDetail({ student, onClose, onGraded, toast }) {
           </>
         )}
       </div>
+    </div>
+  )
+}
+
+function fmtTime(t) {
+  if (!isFinite(t) || t < 0) return '0:00'
+  const m = Math.floor(t / 60), s = Math.floor(t % 60)
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
+// Video player with a live 'elapsed / total' timer. MediaRecorder WebM files
+// carry no duration, so we nudge the browser to compute the real length.
+function RecordingPlayer({ label, src }) {
+  const ref = useRef(null)
+  const [cur, setCur] = useState(0)
+  const [dur, setDur] = useState(0)
+  useEffect(() => {
+    const v = ref.current
+    if (!v) return
+    let fixing = false
+    const good = (d) => isFinite(d) && !isNaN(d) && d > 0
+    const onMeta = () => {
+      if (!good(v.duration)) { fixing = true; try { v.currentTime = 1e101 } catch (_) {} }
+      else setDur(v.duration)
+    }
+    const onTime = () => {
+      if (fixing) {
+        if (good(v.duration)) setDur(v.duration)
+        fixing = false
+        try { v.currentTime = 0 } catch (_) {}
+        setCur(0)
+        return
+      }
+      setCur(v.currentTime)
+    }
+    const onDur = () => { if (good(v.duration)) setDur(v.duration) }
+    v.addEventListener('loadedmetadata', onMeta)
+    v.addEventListener('timeupdate', onTime)
+    v.addEventListener('durationchange', onDur)
+    return () => {
+      v.removeEventListener('loadedmetadata', onMeta)
+      v.removeEventListener('timeupdate', onTime)
+      v.removeEventListener('durationchange', onDur)
+    }
+  }, [src])
+  return (
+    <div>
+      <div className="label" style={{ marginBottom: 4 }}>{label}</div>
+      <video ref={ref} src={src} controls style={{ width: '100%', background: '#000' }} />
+      <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064', marginTop: 4 }}>
+        {fmtTime(cur)} / {fmtTime(dur)}
+      </div>
+    </div>
+  )
+}
+
+// Small warning badges for a student row (missing camera / failed email).
+function recFlags(s) {
+  const flags = []
+  if (s.status === 'submitted' && !s.camera_url) flags.push('⚠ no camera')
+  if (s.report_email_error) flags.push('⚠ email failed')
+  if (!flags.length) return null
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+      {flags.map((t, i) => (
+        <span key={i} style={{ fontFamily: "'Space Mono',monospace", fontSize: 10, color: '#e5322d', border: '1px solid #e5322d', padding: '1px 5px' }}>{t}</span>
+      ))}
     </div>
   )
 }

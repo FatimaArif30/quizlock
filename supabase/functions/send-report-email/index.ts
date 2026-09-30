@@ -69,28 +69,50 @@ Deno.serve(async (req) => {
         ${links}
       </div>`
 
-    await sendEmail(student.email, `Your quiz "${quiz.title}" was submitted`, studentHtml)
-    if (teacherEmail) await sendEmail(teacherEmail, `Submission: ${student.name} — ${quiz.title}`, teacherHtml)
+    const errs: string[] = []
+    const e1 = await sendEmail(student.email, `Your quiz "${quiz.title}" was submitted`, studentHtml)
+    if (e1) errs.push(`student: ${e1}`)
+    if (teacherEmail) {
+      const e2 = await sendEmail(teacherEmail, `Submission: ${student.name} — ${quiz.title}`, teacherHtml)
+      if (e2) errs.push(`teacher: ${e2}`)
+    }
+    const emailError = errs.length ? errs.join(" | ").slice(0, 500) : null
 
-    return json({ ok: true })
+    // Record status so the teacher dashboard can flag a failed email.
+    await admin.from("students").update({
+      report_emailed_at: emailError ? null : new Date().toISOString(),
+      report_email_error: emailError,
+    }).eq("id", student_id)
+
+    return json({ ok: !emailError, email_error: emailError })
   } catch (e) {
     return json({ error: String(e) }, 500)
   }
 })
 
-async function sendEmail(to: string, subject: string, html: string) {
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${Deno.env.get('RESEND_API_KEY')}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: Deno.env.get('EMAIL_FROM') || 'QuizLock <onboarding@resend.dev>',
-      to: [to], subject, html,
-    }),
-  })
-  if (!res.ok) console.error('Resend error', await res.text())
+async function sendEmail(to: string, subject: string, html: string): Promise<string | null> {
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${Deno.env.get('RESEND_API_KEY')}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: Deno.env.get('EMAIL_FROM') || 'QuizLock <onboarding@resend.dev>',
+        to: [to], subject, html,
+      }),
+    })
+    if (!res.ok) {
+      const t = await res.text()
+      console.error('Resend error', t)
+      return `HTTP ${res.status}: ${t.slice(0, 200)}`
+    }
+    return null
+  } catch (e) {
+    console.error('Resend threw', e)
+    return String(e)
+  }
 }
 
 function json(body: unknown, status = 200) {

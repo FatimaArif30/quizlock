@@ -16,6 +16,7 @@ const ERRORS = {
   student_id_required: 'Please enter your Student ID — it is required.',
   not_open_yet: 'This quiz has not opened yet. Please come back at the start time.',
   bad_token: 'Your session expired. Please start again.',
+  not_on_roster: 'Your Student ID is not on the class list for this quiz. Please check with your teacher.',
 }
 const friendly = (e) => ERRORS[e] || e || 'Something went wrong.'
 

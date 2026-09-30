@@ -77,6 +77,7 @@ export default function TeacherDashboard() {
   const [students, setStudents] = useState([])
   const [assignedIds, setAssignedIds] = useState(new Set())
   const [tab, setTab] = useState('questions')
+  const [creating, setCreating] = useState(false)
   const [loading, setLoading] = useState(false)
   const [toast, setToast] = useState(null)
   const toastTimer = useRef(null)
@@ -121,7 +122,7 @@ export default function TeacherDashboard() {
     } else setAssignedIds(new Set())
     if (!bg) setLoading(false)
   }
-  async function openQuiz(q) { setActive(q); setTab('questions'); await reloadData(q) }
+  async function openQuiz(q) { setCreating(false); setActive(q); setTab('questions'); await reloadData(q) }
   async function refreshActive() { if (active) await reloadData(active) }
   async function logout() { await supabase.auth.signOut(); nav('/teacher/login') }
 
@@ -139,7 +140,7 @@ export default function TeacherDashboard() {
 
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         <div style={{ width: 288, borderRight: '1px solid var(--line)', padding: 18, overflowY: 'auto', background: 'var(--card)' }}>
-          <NewQuiz onCreated={loadQuizzes} teacherId={user.id} toast={showToast} />
+          <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={() => { setCreating(true); setActive(null) }}>+ New quiz</button>
           <div className="label" style={{ margin: '22px 0 10px' }}>Your quizzes</div>
           {quizzes.map((q) => (
             <button key={q.id} onClick={() => openQuiz(q)}
@@ -155,9 +156,20 @@ export default function TeacherDashboard() {
         </div>
 
         <div style={{ flex: 1, padding: 32, overflowY: 'auto' }}>
-          {!active && <p style={{ color: '#757064' }}>Select or create a quiz to begin.</p>}
-          {active && loading && <p style={{ fontFamily: 'inherit', color: '#757064' }}>Loading…</p>}
-          {active && !loading && (
+          {creating && (
+            <div style={{ maxWidth: 480 }}>
+              <h2 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-.02em', margin: '0 0 14px' }}>Create a quiz</h2>
+              <QuizForm initial={{}} submitLabel="CREATE" onCancel={() => setCreating(false)}
+                onSubmit={async (vals) => {
+                  const { error } = await supabase.from('quizzes').insert({ teacher_id: user.id, ...vals })
+                  if (error) { showToast(error.message, 'err'); return }
+                  setCreating(false); await loadQuizzes(); showToast('Quiz created')
+                }} />
+            </div>
+          )}
+          {!creating && !active && <p style={{ color: 'var(--muted)' }}>Select a quiz, or create a new one.</p>}
+          {!creating && active && loading && <p style={{ color: 'var(--muted)' }}>Loading…</p>}
+          {!creating && active && !loading && (
             <QuizPanel
               quiz={active} questions={questions} students={students} assignedIds={assignedIds}
               tab={tab} setTab={setTab} toast={showToast} onChange={refreshActive}
@@ -361,18 +373,20 @@ function QuizPanel({ quiz, questions, students, assignedIds, tab, setTab, toast,
       </div>
 
       <div style={{ display: 'inline-flex', gap: 4, background: '#f1f0ea', padding: 4, borderRadius: 10, marginBottom: 24 }}>
-        {['questions', 'results'].map((t) => (
+        {['questions', 'results', 'roster'].map((t) => (
           <button key={t} onClick={() => setTab(t)}
             style={{ padding: '8px 16px', border: 'none', cursor: 'pointer', fontSize: 13.5, fontWeight: 600, borderRadius: 7,
                      background: tab === t ? 'var(--ink)' : 'transparent', color: tab === t ? '#fff' : 'var(--muted)' }}>
-            {t === 'questions' ? `Questions (${questions.length}${quiz.unique_questions ? '/' + needed : ''})` : `Results (${students.length})`}
+            {t === 'questions' ? `Questions (${questions.length}${quiz.unique_questions ? '/' + needed : ''})` : t === 'results' ? `Results (${students.length})` : 'Roster'}
           </button>
         ))}
       </div>
 
       {tab === 'questions'
         ? <QuestionsTab quiz={quiz} questions={questions} needed={needed} allowedTypes={allowedTypes} assignedIds={assignedIds} toast={toast} onChange={onChange} />
-        : <ResultsTab quiz={quiz} students={students} questions={questions} toast={toast} onChange={onChange} />}
+        : tab === 'results'
+        ? <ResultsTab quiz={quiz} students={students} questions={questions} toast={toast} onChange={onChange} />
+        : <RosterTab quiz={quiz} toast={toast} />}
     </div>
   )
 }
@@ -672,6 +686,7 @@ function BulkAdd({ quizId, allowedTypes, toast, onChange }) {
 function ResultsTab({ quiz, students, questions, toast, onChange }) {
   const [sel, setSel] = useState(null)
   const [stats, setStats] = useState(null)
+  const [q, setQ] = useState('')
 
   // analytics: summary tiles from students; hardest questions from answers
   useEffect(() => {
@@ -735,6 +750,11 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
   const gaugeP = stats?.passRate != null ? stats.passRate : (stats?.avgPct != null ? stats.avgPct : 0)
   const gaugeHas = stats?.passRate != null || stats?.avgPct != null
   const needGrade = new Set(stats?.needGrade || [])
+  const shown = students.filter((s) => {
+    const t = q.trim().toLowerCase()
+    if (!t) return true
+    return (s.name || '').toLowerCase().includes(t) || (s.student_id_txt || '').toLowerCase().includes(t) || (s.email || '').toLowerCase().includes(t)
+  })
 
   return (
     <div>
@@ -781,9 +801,12 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
         </div>
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <span className="label">{students.length} student(s) · updates automatically</span>
-        <button className="btn" style={{ padding: '8px 14px' }} onClick={onChange}>↻ REFRESH NOW</button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+        <input className="field" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name or student ID…" style={{ maxWidth: 300 }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span className="label">{q.trim() ? `${shown.length} of ${students.length}` : `${students.length} student(s)`} · auto-updates</span>
+          <button className="btn" style={{ padding: '8px 14px' }} onClick={onChange}>↻ Refresh</button>
+        </div>
       </div>
 
       {!students.length
@@ -797,7 +820,7 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
                 </tr>
               </thead>
               <tbody>
-                {students.map((s) => (
+                {shown.map((s) => (
                   <tr key={s.id} style={{ borderBottom: '1px solid var(--line)' }}>
                     <td style={{ padding: '12px 8px' }}>
                       <div style={{ fontWeight: 700 }}>{s.name}</div>
@@ -1019,6 +1042,100 @@ function recFlags(s) {
       {flags.map((t, i) => (
         <span key={i} style={{ fontFamily: 'inherit', fontSize: 10, color: '#e5322d', border: '1px solid #e5322d', padding: '1px 5px' }}>{t}</span>
       ))}
+    </div>
+  )
+}
+
+function RosterTab({ quiz, toast }) {
+  const [rows, setRows] = useState([])
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const fileRef = useRef(null)
+
+  async function load() {
+    const { data } = await supabase.from('roster').select('*').eq('quiz_id', quiz.id).order('created_at')
+    setRows(data || [])
+  }
+  useEffect(() => { load() }, [quiz.id]) // eslint-disable-line
+
+  function parse(raw) {
+    const out = []
+    const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+    for (const line of lines) {
+      const cols = line.split(/[,\t]/).map((c) => c.trim())
+      if (out.length === 0 && /^(name|student|id|email)$/i.test(cols[0]) && line.toLowerCase().includes('id')) continue
+      let name = cols[0] || '', sid = cols[1] || '', email = cols[2] || ''
+      if (cols.length === 1) { sid = cols[0]; name = '' }
+      if (!sid) continue
+      out.push({ name, student_id_txt: sid, email })
+    }
+    return out
+  }
+
+  async function save(raw) {
+    const parsed = parse(raw)
+    if (!parsed.length) { toast('No rows found. Use: name, student ID, email — one per line.', 'err'); return }
+    const seen = new Set(); const uniq = []
+    for (const pr of parsed) { const k = pr.student_id_txt.toLowerCase(); if (seen.has(k)) continue; seen.add(k); uniq.push(pr) }
+    setBusy(true)
+    await supabase.from('roster').delete().eq('quiz_id', quiz.id)
+    const payload = uniq.map((pr) => ({ quiz_id: quiz.id, name: pr.name || null, email: pr.email || null, student_id_txt: pr.student_id_txt }))
+    const { error } = await supabase.from('roster').insert(payload)
+    setBusy(false)
+    if (error) { toast(error.message, 'err'); return }
+    setText(''); await load(); toast(`Roster saved — ${uniq.length} student(s)`)
+  }
+
+  function onFile(e) {
+    const f = e.target.files?.[0]; if (!f) return
+    const r = new FileReader()
+    r.onload = () => save(String(r.result || ''))
+    r.readAsText(f); e.target.value = ''
+  }
+
+  async function removeRow(id) { await supabase.from('roster').delete().eq('id', id); load() }
+  async function clearAll() {
+    if (!window.confirm('Remove the entire roster for this quiz? Anyone with the link will be able to register again.')) return
+    await supabase.from('roster').delete().eq('quiz_id', quiz.id); load(); toast('Roster cleared')
+  }
+
+  return (
+    <div>
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="label" style={{ marginBottom: 6 }}>Class roster</div>
+        <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0 0 12px', lineHeight: 1.5 }}>
+          Upload your class list to restrict this quiz to only these students. One per line: <b>name, student ID, email</b> (student ID required; email is used for result emails). Saving replaces the current roster. Leave it empty to let anyone with the link register.
+        </p>
+        <textarea className="field" style={{ minHeight: 110, fontSize: 13 }} placeholder={'Ayesha Khan, K21-3391, ayesha@uni.edu\nBilal Ahmed, K21-3404, bilal@uni.edu'} value={text} onChange={(e) => setText(e.target.value)} />
+        <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" disabled={busy} onClick={() => save(text)}>{busy ? 'Saving…' : 'Save roster'}</button>
+          <label className="btn" style={{ cursor: 'pointer' }}>Upload CSV<input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFile} style={{ display: 'none' }} /></label>
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px' }}>
+          <span className="label" style={{ margin: 0 }}>{rows.length} on the roster{rows.length ? '' : ' — restriction off'}</span>
+          {rows.length > 0 && <button className="btn btn-sm" onClick={clearAll} style={{ color: 'var(--accent)', borderColor: 'var(--accent)' }}>Clear roster</button>}
+        </div>
+        {rows.length > 0 && (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
+              <thead><tr>{['Name', 'Student ID', 'Email', ''].map((h) => <th key={h} className="label" style={{ textAlign: 'left', padding: '8px 16px', borderTop: '1px solid var(--line)', borderBottom: '1px solid var(--line)' }}>{h}</th>)}</tr></thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id} style={{ borderBottom: '1px solid var(--line)' }}>
+                    <td style={{ padding: '10px 16px' }}>{r.name || '—'}</td>
+                    <td style={{ padding: '10px 16px', fontWeight: 600 }}>{r.student_id_txt}</td>
+                    <td style={{ padding: '10px 16px', color: 'var(--muted)' }}>{r.email || '—'}</td>
+                    <td style={{ padding: '10px 16px', textAlign: 'right' }}><button className="btn btn-sm" onClick={() => removeRow(r.id)}>Remove</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

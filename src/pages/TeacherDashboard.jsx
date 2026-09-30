@@ -129,7 +129,7 @@ export default function TeacherDashboard() {
 
   return (
     <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 32px', borderBottom: '2px solid #131311' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 28px', borderBottom: '1px solid var(--line)', background: 'var(--card)', position: 'sticky', top: 0, zIndex: 5 }}>
         <span style={{ fontWeight: 800, fontSize: 20 }}>QUIZLOCK<span style={{ color: '#e5322d' }}>.</span></span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <span className="label">{user.email}</span>
@@ -138,15 +138,15 @@ export default function TeacherDashboard() {
       </div>
 
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        <div style={{ width: 300, borderRight: '2px solid #131311', padding: 20, overflowY: 'auto' }}>
+        <div style={{ width: 288, borderRight: '1px solid var(--line)', padding: 18, overflowY: 'auto', background: 'var(--card)' }}>
           <NewQuiz onCreated={loadQuizzes} teacherId={user.id} toast={showToast} />
           <div className="label" style={{ margin: '22px 0 10px' }}>Your quizzes</div>
           {quizzes.map((q) => (
             <button key={q.id} onClick={() => openQuiz(q)}
-              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '12px 14px', marginBottom: 8, cursor: 'pointer',
-                       border: '2px solid #131311', background: active?.id === q.id ? '#131311' : '#fff', color: active?.id === q.id ? '#f2f1ec' : '#131311' }}>
-              <div style={{ fontWeight: 700 }}>{q.title}</div>
-              <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 11, opacity: .7 }}>
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', marginBottom: 6, cursor: 'pointer', borderRadius: 10,
+                       border: active?.id === q.id ? '1px solid var(--ink)' : '1px solid var(--line)', background: active?.id === q.id ? 'var(--ink)' : 'var(--card)', color: active?.id === q.id ? '#fff' : 'var(--ink)' }}>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>{q.title}</div>
+              <div style={{ fontSize: 11.5, opacity: .7, marginTop: 2 }}>
                 {q.num_students} students · {q.unique_questions ? `${q.questions_per_student} each` : 'same set'}
               </div>
             </button>
@@ -156,7 +156,7 @@ export default function TeacherDashboard() {
 
         <div style={{ flex: 1, padding: 32, overflowY: 'auto' }}>
           {!active && <p style={{ color: '#757064' }}>Select or create a quiz to begin.</p>}
-          {active && loading && <p style={{ fontFamily: "'Space Mono',monospace", color: '#757064' }}>Loading…</p>}
+          {active && loading && <p style={{ fontFamily: 'inherit', color: '#757064' }}>Loading…</p>}
           {active && !loading && (
             <QuizPanel
               quiz={active} questions={questions} students={students} assignedIds={assignedIds}
@@ -206,7 +206,7 @@ function QuizForm({ initial, submitLabel, onSubmit, onCancel }) {
   }
 
   return (
-    <div style={{ border: '2px solid #131311', padding: 16 }}>
+    <div style={{ border: '1px solid var(--line)', padding: 16 }}>
       <input className="field" placeholder="Quiz title" value={title} onChange={(e) => setTitle(e.target.value)} style={{ marginBottom: 10 }} />
       <label className="label">Question distribution</label>
       <select className="field" value={uniqueQ ? 'unique' : 'same'} onChange={(e) => setUniqueQ(e.target.value === 'unique')} style={{ margin: '4px 0 10px' }}>
@@ -270,7 +270,7 @@ function QuizForm({ initial, submitLabel, onSubmit, onCancel }) {
         <span className="label" style={{ margin: 0 }}>Show students their result after submit</span>
       </label>
 
-      <div style={{ background: '#131311', color: '#f2f1ec', padding: '10px 12px', fontFamily: "'Space Mono',monospace", fontSize: 12, marginBottom: 12 }}>
+      <div style={{ background: '#131311', color: '#f2f1ec', padding: '10px 12px', fontFamily: 'inherit', fontSize: 12, marginBottom: 12 }}>
         {uniqueQ
           ? <>You'll need <b style={{ color: '#f0645f' }}>{needed}</b> questions total (unique sets).</>
           : <>Add as many questions as you like — every student gets all of them.</>}
@@ -356,14 +356,14 @@ function QuizPanel({ quiz, questions, students, assignedIds, tab, setTab, toast,
       </div>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '20px 0', flexWrap: 'wrap' }}>
-        <code style={{ background: '#fff', border: '2px solid #131311', padding: '12px 14px', fontFamily: "'Space Mono',monospace", fontSize: 13 }}>{link}</code>
+        <code style={{ background: '#fff', border: '1px solid var(--line)', padding: '12px 14px', fontFamily: 'inherit', fontSize: 13 }}>{link}</code>
         <button className="btn" onClick={copyLink} style={{ padding: '12px 16px' }}>COPY LINK</button>
       </div>
 
-      <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #131311', marginBottom: 24 }}>
+      <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--line)', marginBottom: 24 }}>
         {['questions', 'results'].map((t) => (
           <button key={t} onClick={() => setTab(t)}
-            style={{ padding: '12px 20px', border: 'none', cursor: 'pointer', fontFamily: "'Space Mono',monospace", fontSize: 13, letterSpacing: 1,
+            style={{ padding: '12px 20px', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, letterSpacing: 1,
                      background: tab === t ? '#131311' : 'transparent', color: tab === t ? '#f2f1ec' : '#131311' }}>
             {t === 'questions' ? `QUESTIONS (${questions.length}/${needed})` : `RESULTS (${students.length})`}
           </button>
@@ -399,7 +399,7 @@ function QuestionsTab({ quiz, questions, needed, allowedTypes, assignedIds, toas
 
   return (
     <div>
-      <div style={{ background: enough ? '#e6f6ee' : '#fdf0ef', border: `2px solid ${enough ? '#1f9d55' : '#e5322d'}`, padding: 14, marginBottom: 22, fontFamily: "'Space Mono',monospace", fontSize: 13 }}>
+      <div style={{ background: enough ? '#e6f6ee' : '#fdf0ef', border: `2px solid ${enough ? '#1f9d55' : '#e5322d'}`, padding: 14, marginBottom: 22, fontFamily: 'inherit', fontSize: 13 }}>
         {quiz.unique_questions
           ? (enough
               ? `✓ Enough questions. Every student gets a unique set of ${quiz.questions_per_student}.`
@@ -418,33 +418,33 @@ function QuestionsTab({ quiz, questions, needed, allowedTypes, assignedIds, toas
       {questions.map((q, i) => {
         const locked = assignedIds.has(q.id)
         return (
-          <div key={q.id} style={{ border: '1.5px solid #dddbd1', padding: 16, marginBottom: 10, background: '#fff', display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+          <div key={q.id} style={{ border: '1px solid var(--line)', padding: 16, marginBottom: 10, background: '#fff', display: 'flex', justifyContent: 'space-between', gap: 16 }}>
             <div>
-              <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 11, background: '#131311', color: '#fff', padding: '2px 7px', marginRight: 8 }}>{TYPE_LABEL[q.type] || q.type.toUpperCase()}</span>
-              {locked && <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 11, background: '#c9781f', color: '#fff', padding: '2px 7px', marginRight: 8 }}>LOCKED</span>}
+              <span style={{ fontFamily: 'inherit', fontSize: 11, background: '#131311', color: '#fff', padding: '2px 7px', marginRight: 8 }}>{TYPE_LABEL[q.type] || q.type.toUpperCase()}</span>
+              {locked && <span style={{ fontFamily: 'inherit', fontSize: 11, background: '#c9781f', color: '#fff', padding: '2px 7px', marginRight: 8 }}>LOCKED</span>}
               <span style={{ fontWeight: 600 }}>{i + 1}. {q.prompt}</span>
               {q.type === 'mcq' && (
-                <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064', marginTop: 6 }}>
+                <div style={{ fontFamily: 'inherit', fontSize: 12, color: '#757064', marginTop: 6 }}>
                   {(q.options || []).map((o) => `${o.key}) ${o.text}`).join('   ')} · correct: <b>{q.correct_key}</b>
                 </div>
               )}
               {q.type === 'truefalse' && (
-                <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064', marginTop: 6 }}>True / False · correct: <b>{q.correct_key}</b></div>
+                <div style={{ fontFamily: 'inherit', fontSize: 12, color: '#757064', marginTop: 6 }}>True / False · correct: <b>{q.correct_key}</b></div>
               )}
               {q.type === 'code' && (
-                <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064', marginTop: 6 }}>Code · language: <b>{(LANGS.find((l) => l.monaco === q.code_lang) || {}).label || q.code_lang || 'Python'}</b></div>
+                <div style={{ fontFamily: 'inherit', fontSize: 12, color: '#757064', marginTop: 6 }}>Code · language: <b>{(LANGS.find((l) => l.monaco === q.code_lang) || {}).label || q.code_lang || 'Python'}</b></div>
               )}
             </div>
             <div style={{ position: 'relative' }}>
               <button className="btn" style={{ padding: '6px 14px', height: 'fit-content', fontSize: 18, lineHeight: 1 }}
                 onClick={() => setMenuId(menuId === q.id ? null : q.id)}>⋯</button>
               {menuId === q.id && (
-                <div style={{ position: 'absolute', right: 0, top: '108%', zIndex: 30, background: '#fff', border: '2px solid #131311', minWidth: 140, boxShadow: '4px 4px 0 rgba(19,19,17,.15)' }}>
+                <div style={{ position: 'absolute', right: 0, top: '108%', zIndex: 30, background: '#fff', border: '1px solid var(--line)', minWidth: 140, boxShadow: '4px 4px 0 rgba(19,19,17,.15)' }}>
                   {[['Edit', () => { if (locked) { toast('Locked — in use by a student.', 'err') } else { setEditing(q) } setMenuId(null) }],
                     ['Duplicate', () => duplicate(q)],
                     ['Delete', () => del(q)]].map(([label, fn]) => (
                     <button key={label} onClick={fn}
-                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 14px', border: 'none', borderBottom: '1px solid #eee', background: '#fff', cursor: 'pointer', fontFamily: "'Space Mono',monospace", fontSize: 13, color: label === 'Delete' ? '#e5322d' : '#131311' }}>
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 14px', border: 'none', borderBottom: '1px solid #eee', background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: label === 'Delete' ? '#e5322d' : '#131311' }}>
                       {label}{locked && label !== 'Duplicate' ? ' 🔒' : ''}
                     </button>
                   ))}
@@ -498,7 +498,7 @@ function QuestionEditor({ question, allowedTypes, toast, onClose, onSaved }) {
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(19,19,17,.6)', zIndex: 70, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: 24, overflowY: 'auto' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: '#f2f1ec', border: '2px solid #131311', width: 560, maxWidth: '100%', padding: 26, marginTop: 30 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: '#f2f1ec', border: '1px solid var(--line)', width: 560, maxWidth: '100%', padding: 26, marginTop: 30 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h2 style={{ fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: '-.5px' }}>Edit question</h2>
           <button className="btn" style={{ padding: '6px 12px' }} onClick={onClose} autoFocus>CLOSE ✕</button>
@@ -600,7 +600,7 @@ function AddQuestion({ quizId, allowedTypes, typePoints, toast, onChange }) {
   }
 
   return (
-    <div style={{ border: '2px solid #131311', padding: 18 }}>
+    <div style={{ border: '1px solid var(--line)', padding: 18 }}>
       <div className="label" style={{ marginBottom: 12 }}>Add one question</div>
       <TypePicker types={types} type={type} setType={setType} />
       <textarea className="field" placeholder="Question prompt" value={prompt} onChange={(e) => setPrompt(e.target.value)} style={{ minHeight: 70, marginBottom: 10 }} />
@@ -649,7 +649,7 @@ function BulkAdd({ quizId, allowedTypes, toast, onChange }) {
   }
 
   return (
-    <div style={{ border: '2px solid #131311', padding: 18 }}>
+    <div style={{ border: '1px solid var(--line)', padding: 18 }}>
       <div className="label" style={{ marginBottom: 12 }}>Bulk add questions</div>
       <label className="btn btn-primary" style={{ display: 'inline-block', marginBottom: 12 }}>
         CHOOSE CSV FILE
@@ -658,7 +658,7 @@ function BulkAdd({ quizId, allowedTypes, toast, onChange }) {
       <p style={{ fontSize: 12, color: '#757064', marginTop: 0 }}>
         …or paste CSV below. First row = headers: type, prompt, option_a…d, correct (A/B/C/D), points.
       </p>
-      <textarea className="field" style={{ minHeight: 130, fontFamily: "'Space Mono',monospace", fontSize: 12 }}
+      <textarea className="field" style={{ minHeight: 130, fontFamily: 'inherit', fontSize: 12 }}
         placeholder={template} value={text} onChange={(e) => setText(e.target.value)} />
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
         <button className="btn btn-primary" onClick={importAll}>IMPORT →</button>
@@ -711,10 +711,10 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
   }
   const badge = (s) => {
     const map = { submitted: '#1f9d55', in_progress: '#e5a72d', registered: '#757064', blocked: '#e5322d' }
-    return <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 11, color: '#fff', background: map[s.status] || '#757064', padding: '2px 8px' }}>{s.status.toUpperCase()}</span>
+    return <span style={{ fontFamily: 'inherit', fontSize: 11, color: '#fff', background: map[s.status] || '#757064', padding: '2px 8px' }}>{s.status.toUpperCase()}</span>
   }
   const tile = (label, val) => (
-    <div style={{ border: '1.5px solid #dddbd1', background: '#fff', padding: '12px 14px' }}>
+    <div style={{ border: '1px solid var(--line)', background: '#fff', padding: '12px 14px' }}>
       <div style={{ fontFamily: "'Bricolage Grotesque',sans-serif", fontWeight: 800, fontSize: 26, letterSpacing: '-.5px' }}>{val}</div>
       <div className="label" style={{ marginTop: 4 }}>{label}</div>
     </div>
@@ -743,21 +743,21 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <thead>
-                <tr style={{ textAlign: 'left', borderBottom: '2px solid #131311' }}>
+                <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--line)' }}>
                   {['Student', 'Status', 'Score', 'Warnings', 'Actions'].map((h) => (<th key={h} className="label" style={{ padding: '10px 8px' }}>{h}</th>))}
                 </tr>
               </thead>
               <tbody>
                 {students.map((s) => (
-                  <tr key={s.id} style={{ borderBottom: '1.5px solid #dddbd1' }}>
+                  <tr key={s.id} style={{ borderBottom: '1px solid var(--line)' }}>
                     <td style={{ padding: '12px 8px' }}>
                       <div style={{ fontWeight: 700 }}>{s.name}</div>
-                      <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064' }}>{s.student_id_txt || s.email}</div>
+                      <div style={{ fontFamily: 'inherit', fontSize: 12, color: '#757064' }}>{s.student_id_txt || s.email}</div>
                       {recFlags(s)}
                     </td>
                     <td style={{ padding: '12px 8px' }}>{badge(s)}</td>
-                    <td style={{ padding: '12px 8px', fontFamily: "'Space Mono',monospace" }}>{s.score != null ? `${s.score}/${s.total_points}` : '—'}</td>
-                    <td style={{ padding: '12px 8px', fontFamily: "'Space Mono',monospace", color: s.warnings ? '#e5322d' : '#757064' }}>{s.warnings}</td>
+                    <td style={{ padding: '12px 8px', fontFamily: 'inherit' }}>{s.score != null ? `${s.score}/${s.total_points}` : '—'}</td>
+                    <td style={{ padding: '12px 8px', fontFamily: 'inherit', color: s.warnings ? '#e5322d' : '#757064' }}>{s.warnings}</td>
                     <td style={{ padding: '12px 8px', whiteSpace: 'nowrap' }}>
                       <button className="btn btn-primary" style={{ padding: '6px 12px', marginRight: 6 }} onClick={() => setSel(s)}>VIEW</button>
                       <button className="btn" style={{ padding: '6px 12px' }} onClick={() => reallow(s)}>RE-ALLOW</button>
@@ -774,7 +774,7 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
           <div className="label" style={{ marginBottom: 8 }}>Hardest questions (lowest % correct)</div>
           {stats.hardest.map((h, i) => (
             <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #eee' }}>
-              <span style={{ fontFamily: "'Space Mono',monospace", fontWeight: 700, color: h.pct < 50 ? '#e5322d' : '#131311', width: 48 }}>{h.pct}%</span>
+              <span style={{ fontFamily: 'inherit', fontWeight: 700, color: h.pct < 50 ? '#e5322d' : '#131311', width: 48 }}>{h.pct}%</span>
               <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.prompt}</span>
               <span className="label">{h.n} ans</span>
             </div>
@@ -830,19 +830,19 @@ function StudentDetail({ student, onClose, onGraded, toast }) {
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(19,19,17,.6)', zIndex: 50, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: 24, overflowY: 'auto' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: '#f2f1ec', border: '2px solid #131311', width: 900, maxWidth: '100%', padding: 28, marginTop: 20 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: '#f2f1ec', border: '1px solid var(--line)', width: 900, maxWidth: '100%', padding: 28, marginTop: 20 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <h2 style={{ fontSize: 28, fontWeight: 800, margin: '0 0 4px', letterSpacing: '-.6px' }}>{student.name}</h2>
             <div className="label">{student.student_id_txt ? `ID ${student.student_id_txt} · ` : ''}{student.email} · warnings: {student.warnings}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 22, fontWeight: 700 }}>{score != null ? `${score}/${student.total_points}` : '—'}</div>
+            <div style={{ fontFamily: 'inherit', fontSize: 22, fontWeight: 700 }}>{score != null ? `${score}/${student.total_points}` : '—'}</div>
             <button className="btn" style={{ padding: '6px 14px', marginTop: 6 }} onClick={onClose} autoFocus>CLOSE ✕</button>
           </div>
         </div>
 
-        {loading ? <p style={{ fontFamily: "'Space Mono',monospace" }}>Loading…</p> : (
+        {loading ? <p style={{ fontFamily: 'inherit' }}>Loading…</p> : (
           <>
             <div className="label" style={{ margin: '20px 0 8px' }}>Recordings (private — only you)</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
@@ -867,11 +867,11 @@ function StudentDetail({ student, onClose, onGraded, toast }) {
               const q = a.questions || {}
               const autoGraded = q.type === 'mcq' || q.type === 'truefalse'
               return (
-                <div key={a.id} style={{ border: '1.5px solid #dddbd1', background: '#fff', padding: 16, marginBottom: 10 }}>
+                <div key={a.id} style={{ border: '1px solid var(--line)', background: '#fff', padding: 16, marginBottom: 10 }}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                    <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 11, background: '#131311', color: '#fff', padding: '2px 7px' }}>{TYPE_LABEL[q.type] || (q.type || '').toUpperCase()}</span>
+                    <span style={{ fontFamily: 'inherit', fontSize: 11, background: '#131311', color: '#fff', padding: '2px 7px' }}>{TYPE_LABEL[q.type] || (q.type || '').toUpperCase()}</span>
                     <span style={{ fontWeight: 700 }}>{q.prompt}</span>
-                    <span style={{ marginLeft: 'auto', fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064' }}>{q.points} pt</span>
+                    <span style={{ marginLeft: 'auto', fontFamily: 'inherit', fontSize: 12, color: '#757064' }}>{q.points} pt</span>
                   </div>
                   {q.type === 'code'
                     ? <CodeEditor langId={q.code_lang} value={a.response || ''} readOnly height={220} />
@@ -881,7 +881,7 @@ function StudentDetail({ student, onClose, onGraded, toast }) {
                       </div>
                     )}
                   {autoGraded ? (
-                    <div style={{ marginTop: 8, fontFamily: "'Space Mono',monospace", fontSize: 13 }}>
+                    <div style={{ marginTop: 8, fontFamily: 'inherit', fontSize: 13 }}>
                       {a.is_correct ? <span style={{ color: '#1f9d55' }}>✓ Correct (+{q.points})</span>
                         : <span style={{ color: '#e5322d' }}>✗ Wrong · correct answer: {q.correct_key}</span>}
                     </div>
@@ -941,7 +941,7 @@ function RecordingPlayer({ label, src }) {
     <div>
       <div className="label" style={{ marginBottom: 4 }}>{label}</div>
       <video ref={ref} src={src} controls style={{ width: '100%', background: '#000' }} />
-      <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064', marginTop: 4 }}>
+      <div style={{ fontFamily: 'inherit', fontSize: 12, color: '#757064', marginTop: 4 }}>
         {fmtTime(cur)} / {fmtTime(dur)}
       </div>
     </div>
@@ -957,7 +957,7 @@ function recFlags(s) {
   return (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
       {flags.map((t, i) => (
-        <span key={i} style={{ fontFamily: "'Space Mono',monospace", fontSize: 10, color: '#e5322d', border: '1px solid #e5322d', padding: '1px 5px' }}>{t}</span>
+        <span key={i} style={{ fontFamily: 'inherit', fontSize: 10, color: '#e5322d', border: '1px solid #e5322d', padding: '1px 5px' }}>{t}</span>
       ))}
     </div>
   )
@@ -971,7 +971,7 @@ function GradeRow({ answer, maxPoints, onGrade }) {
       <input className="field" type="number" min={0} max={maxPoints} value={val} onChange={(e) => setVal(e.target.value)} style={{ width: 90 }} />
       <button className="btn btn-primary" style={{ padding: '8px 14px' }}
         onClick={() => onGrade(answer.id, Math.max(0, Math.min(parseFloat(val) || 0, maxPoints)))}>SAVE GRADE</button>
-      {answer.awarded != null && <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#1f9d55' }}>graded: {answer.awarded}</span>}
+      {answer.awarded != null && <span style={{ fontFamily: 'inherit', fontSize: 12, color: '#1f9d55' }}>graded: {answer.awarded}</span>}
     </div>
   )
 }

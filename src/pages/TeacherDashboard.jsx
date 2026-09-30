@@ -338,7 +338,7 @@ function QuizPanel({ quiz, questions, students, assignedIds, tab, setTab, toast,
     <div>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-1.2px', margin: '0 0 8px' }}>{quiz.title}</h1>
+          <h1 style={{ fontSize: 27, fontWeight: 700, letterSpacing: '-.02em', margin: '0 0 6px' }}>{quiz.title}</h1>
           <div className="label">
             {quiz.num_students} students · {quiz.unique_questions ? `${quiz.questions_per_student} each` : 'same set'} · {quiz.duration_minutes} min · {allowedTypes.map((t) => TYPE_LABEL[t] || t.toUpperCase()).join(', ')}
             {quiz.pass_score != null ? ` · pass ${quiz.pass_score}%` : ''}{quiz.show_results ? ' · results shown' : ''}
@@ -360,12 +360,12 @@ function QuizPanel({ quiz, questions, students, assignedIds, tab, setTab, toast,
         <button className="btn" onClick={copyLink} style={{ padding: '12px 16px' }}>COPY LINK</button>
       </div>
 
-      <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--line)', marginBottom: 24 }}>
+      <div style={{ display: 'inline-flex', gap: 4, background: '#f1f0ea', padding: 4, borderRadius: 10, marginBottom: 24 }}>
         {['questions', 'results'].map((t) => (
           <button key={t} onClick={() => setTab(t)}
-            style={{ padding: '12px 20px', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, letterSpacing: 1,
-                     background: tab === t ? '#131311' : 'transparent', color: tab === t ? '#f2f1ec' : '#131311' }}>
-            {t === 'questions' ? `QUESTIONS (${questions.length}/${needed})` : `RESULTS (${students.length})`}
+            style={{ padding: '8px 16px', border: 'none', cursor: 'pointer', fontSize: 13.5, fontWeight: 600, borderRadius: 7,
+                     background: tab === t ? 'var(--ink)' : 'transparent', color: tab === t ? '#fff' : 'var(--muted)' }}>
+            {t === 'questions' ? `Questions (${questions.length}${quiz.unique_questions ? '/' + needed : ''})` : `Results (${students.length})`}
           </button>
         ))}
       </div>
@@ -710,13 +710,14 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
     catch (e) { toast(e.message, 'err') }
   }
   const badge = (s) => {
-    const map = { submitted: '#1f9d55', in_progress: '#e5a72d', registered: '#757064', blocked: '#e5322d' }
-    return <span style={{ fontFamily: 'inherit', fontSize: 11, color: '#fff', background: map[s.status] || '#757064', padding: '2px 8px' }}>{s.status.toUpperCase()}</span>
+    const cls = s.status === 'submitted' ? 'good' : s.status === 'in_progress' ? 'warn' : s.status === 'blocked' ? 'bad' : 'neutral'
+    const txt = s.status === 'in_progress' ? 'In progress' : s.status.charAt(0).toUpperCase() + s.status.slice(1)
+    return <span className={`chip ${cls}`}><span className="led"></span>{txt}</span>
   }
   const tile = (label, val) => (
-    <div style={{ border: '1px solid var(--line)', background: '#fff', padding: '12px 14px' }}>
-      <div style={{ fontFamily: "'Bricolage Grotesque',sans-serif", fontWeight: 800, fontSize: 26, letterSpacing: '-.5px' }}>{val}</div>
-      <div className="label" style={{ marginTop: 4 }}>{label}</div>
+    <div className="card" style={{ padding: '16px 18px' }}>
+      <div className="label" style={{ fontSize: 11.5, letterSpacing: '.04em', textTransform: 'uppercase' }}>{label}</div>
+      <div className="tnum" style={{ fontWeight: 700, fontSize: 28, letterSpacing: '-.02em', marginTop: 8 }}>{val}</div>
     </div>
   )
 

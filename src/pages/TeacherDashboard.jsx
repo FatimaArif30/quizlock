@@ -444,7 +444,7 @@ function QuestionsTab({ quiz, questions, needed, allowedTypes, assignedIds, toas
                     ['Duplicate', () => duplicate(q)],
                     ['Delete', () => del(q)]].map(([label, fn]) => (
                     <button key={label} onClick={fn}
-                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 14px', border: 'none', borderBottom: '1px solid #eee', background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: label === 'Delete' ? '#e5322d' : '#131311' }}>
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 14px', border: 'none', borderBottom: '1px solid var(--line)', background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: label === 'Delete' ? '#e5322d' : '#131311' }}>
                       {label}{locked && label !== 'Duplicate' ? ' 🔒' : ''}
                     </button>
                   ))}
@@ -721,6 +721,14 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
     </div>
   )
 
+  const graded = students.filter((s) => s.status === 'submitted' && s.total_points)
+  const spread = [0, 0, 0, 0, 0]
+  graded.forEach((s) => { const pct = (s.score / s.total_points) * 100; spread[Math.min(4, Math.floor(pct / 20))]++ })
+  const spreadMax = Math.max(1, ...spread)
+  const spreadCaps = ['0–20', '21–40', '41–60', '61–80', '81–100']
+  const gaugeP = stats?.passRate != null ? stats.passRate : (stats?.avgPct != null ? stats.avgPct : 0)
+  const gaugeHas = stats?.passRate != null || stats?.avgPct != null
+
   return (
     <div>
       {/* summary */}
@@ -733,6 +741,39 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
         </div>
       )}
 
+      {stats && graded.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: 12, marginBottom: 18 }}>
+          <div className="card">
+            <div className="label" style={{ marginBottom: 12 }}>{stats.passRate != null ? 'Pass rate' : 'Average score'}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ position: 'relative', width: 116, height: 116, flex: 'none', borderRadius: '50%', background: `conic-gradient(var(--ink) ${gaugeP}%, var(--track) 0)` }}>
+                <div style={{ position: 'absolute', inset: 14, background: 'var(--card)', borderRadius: '50%', display: 'grid', placeItems: 'center', textAlign: 'center' }}>
+                  <div>
+                    <div className="tnum" style={{ fontSize: 23, fontWeight: 700, letterSpacing: '-.02em' }}>{gaugeHas ? gaugeP + '%' : '—'}</div>
+                    <div className="label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.05em' }}>{stats.passRate != null ? 'passed' : 'avg'}</div>
+                  </div>
+                </div>
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.5 }}>
+                {stats.submitted} submitted{quiz.pass_score != null ? ` · pass mark ${quiz.pass_score}%` : ''}
+              </div>
+            </div>
+          </div>
+          <div className="card">
+            <div className="label" style={{ marginBottom: 12 }}>Score spread</div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, height: 116 }}>
+              {spread.map((n, i) => (
+                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, height: '100%', justifyContent: 'flex-end' }}>
+                  <div className="tnum" style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-2)' }}>{n}</div>
+                  <div style={{ width: '100%', maxWidth: 32, height: `${Math.max(4, (n / spreadMax) * 100)}%`, background: 'var(--ink)', borderRadius: '6px 6px 2px 2px' }}></div>
+                  <div className="label" style={{ fontSize: 10.5 }}>{spreadCaps[i]}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <span className="label">{students.length} student(s) · updates automatically</span>
         <button className="btn" style={{ padding: '8px 14px' }} onClick={onChange}>↻ REFRESH NOW</button>
@@ -741,7 +782,7 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
       {!students.length
         ? <p style={{ color: '#757064' }}>No students have started yet.</p>
         : (
-          <div style={{ overflowX: 'auto' }}>
+          <div className="card" style={{ overflowX: 'auto', padding: '4px 8px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <thead>
                 <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--line)' }}>
@@ -771,10 +812,10 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
         )}
 
       {stats?.hardest?.length > 0 && (
-        <div style={{ marginTop: 24 }}>
+        <div className="card" style={{ marginTop: 18 }}>
           <div className="label" style={{ marginBottom: 8 }}>Hardest questions (lowest % correct)</div>
           {stats.hardest.map((h, i) => (
-            <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #eee' }}>
+            <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--line)' }}>
               <span style={{ fontFamily: 'inherit', fontWeight: 700, color: h.pct < 50 ? '#e5322d' : '#131311', width: 48 }}>{h.pct}%</span>
               <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.prompt}</span>
               <span className="label">{h.n} ans</span>
@@ -877,7 +918,7 @@ function StudentDetail({ student, onClose, onGraded, toast }) {
                   {q.type === 'code'
                     ? <CodeEditor langId={q.code_lang} value={a.response || ''} readOnly height={220} />
                     : (
-                      <div style={{ fontSize: 15, whiteSpace: 'pre-wrap', background: '#f7f6f1', padding: 12, border: '1px solid #eee' }}>
+                      <div style={{ fontSize: 15, whiteSpace: 'pre-wrap', background: '#f7f6f1', padding: 12, border: '1px solid var(--line)' }}>
                         {a.response || <span style={{ color: '#999' }}>(no answer)</span>}
                       </div>
                     )}

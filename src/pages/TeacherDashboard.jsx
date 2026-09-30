@@ -147,7 +147,7 @@ export default function TeacherDashboard() {
                        border: '2px solid #131311', background: active?.id === q.id ? '#131311' : '#fff', color: active?.id === q.id ? '#f2f1ec' : '#131311' }}>
               <div style={{ fontWeight: 700 }}>{q.title}</div>
               <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 11, opacity: .7 }}>
-                {q.num_students} students · {q.questions_per_student} each
+                {q.num_students} students · {q.unique_questions ? `${q.questions_per_student} each` : 'same set'}
               </div>
             </button>
           ))}
@@ -178,6 +178,7 @@ function QuizForm({ initial, submitLabel, onSubmit, onCancel }) {
   const [title, setTitle] = useState(initial.title || '')
   const [nStu, setNStu] = useState(initial.num_students ?? 10)
   const [perStu, setPerStu] = useState(initial.questions_per_student ?? 10)
+  const [uniqueQ, setUniqueQ] = useState(initial.unique_questions ?? false)
   const [dur, setDur] = useState(initial.duration_minutes ?? 30)
   const [types, setTypes] = useState({ mcq: true, truefalse: true, text: true, code: true, ...(initial.typesMap || {}) })
   const [openAt, setOpenAt] = useState(toLocalInput(initial.opens_at))
@@ -195,6 +196,7 @@ function QuizForm({ initial, submitLabel, onSubmit, onCancel }) {
     onSubmit({
       title: title.trim(), num_students: parseInt(nStu) || 1,
       questions_per_student: parseInt(perStu) || 1, duration_minutes: parseInt(dur) || 30,
+      unique_questions: uniqueQ,
       allowed_types: chosen, pass_score: passOn ? (parseInt(passScore) || 0) : null,
       show_results: showResults,
       opens_at: openAt ? new Date(openAt).toISOString() : null,
@@ -206,10 +208,21 @@ function QuizForm({ initial, submitLabel, onSubmit, onCancel }) {
   return (
     <div style={{ border: '2px solid #131311', padding: 16 }}>
       <input className="field" placeholder="Quiz title" value={title} onChange={(e) => setTitle(e.target.value)} style={{ marginBottom: 10 }} />
+      <label className="label">Question distribution</label>
+      <select className="field" value={uniqueQ ? 'unique' : 'same'} onChange={(e) => setUniqueQ(e.target.value === 'unique')} style={{ margin: '4px 0 10px' }}>
+        <option value="same">Same questions for everyone</option>
+        <option value="unique">Unique set per student (needs a bigger pool)</option>
+      </select>
       <label className="label">How many students?</label>
       <input className="field" type="number" min={1} value={nStu} onChange={(e) => setNStu(e.target.value)} style={{ margin: '4px 0 10px' }} />
-      <label className="label">Questions per student?</label>
-      <input className="field" type="number" min={1} value={perStu} onChange={(e) => setPerStu(e.target.value)} style={{ margin: '4px 0 10px' }} />
+      {uniqueQ ? (
+        <>
+          <label className="label">Questions per student?</label>
+          <input className="field" type="number" min={1} value={perStu} onChange={(e) => setPerStu(e.target.value)} style={{ margin: '4px 0 10px' }} />
+        </>
+      ) : (
+        <p className="label" style={{ margin: '0 0 10px', color: '#757064' }}>Everyone gets all the questions you add.</p>
+      )}
       <label className="label">Time limit (minutes)</label>
       <input className="field" type="number" min={1} value={dur} onChange={(e) => setDur(e.target.value)} style={{ margin: '4px 0 10px' }} />
 
@@ -258,7 +271,9 @@ function QuizForm({ initial, submitLabel, onSubmit, onCancel }) {
       </label>
 
       <div style={{ background: '#131311', color: '#f2f1ec', padding: '10px 12px', fontFamily: "'Space Mono',monospace", fontSize: 12, marginBottom: 12 }}>
-        You'll need <b style={{ color: '#f0645f' }}>{needed}</b> questions total.
+        {uniqueQ
+          ? <>You'll need <b style={{ color: '#f0645f' }}>{needed}</b> questions total (unique sets).</>
+          : <>Add as many questions as you like — every student gets all of them.</>}
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
         <button className="btn btn-primary" onClick={submit} style={{ flex: 1, padding: '10px' }}>{submitLabel}</button>
@@ -325,7 +340,7 @@ function QuizPanel({ quiz, questions, students, assignedIds, tab, setTab, toast,
         <div>
           <h1 style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-1.2px', margin: '0 0 8px' }}>{quiz.title}</h1>
           <div className="label">
-            {quiz.num_students} students · {quiz.questions_per_student} each · {quiz.duration_minutes} min · {allowedTypes.map((t) => TYPE_LABEL[t] || t.toUpperCase()).join(', ')}
+            {quiz.num_students} students · {quiz.unique_questions ? `${quiz.questions_per_student} each` : 'same set'} · {quiz.duration_minutes} min · {allowedTypes.map((t) => TYPE_LABEL[t] || t.toUpperCase()).join(', ')}
             {quiz.pass_score != null ? ` · pass ${quiz.pass_score}%` : ''}{quiz.show_results ? ' · results shown' : ''}
             {(quiz.opens_at || quiz.closes_at) ? ' · scheduled' : ''}
           </div>
@@ -364,7 +379,7 @@ function QuizPanel({ quiz, questions, students, assignedIds, tab, setTab, toast,
 
 // ---------- Questions tab ----------
 function QuestionsTab({ quiz, questions, needed, allowedTypes, assignedIds, toast, onChange }) {
-  const enough = questions.length >= needed
+  const enough = quiz.unique_questions ? (questions.length >= needed) : (questions.length >= 1)
   const [menuId, setMenuId] = useState(null)
   const [editing, setEditing] = useState(null)
 
@@ -385,9 +400,13 @@ function QuestionsTab({ quiz, questions, needed, allowedTypes, assignedIds, toas
   return (
     <div>
       <div style={{ background: enough ? '#e6f6ee' : '#fdf0ef', border: `2px solid ${enough ? '#1f9d55' : '#e5322d'}`, padding: 14, marginBottom: 22, fontFamily: "'Space Mono',monospace", fontSize: 13 }}>
-        {enough
-          ? `✓ Enough questions. Every student gets a unique set of ${quiz.questions_per_student}.`
-          : `Add ${needed - questions.length} more question(s). You need ${needed} for unique sets.`}
+        {quiz.unique_questions
+          ? (enough
+              ? `✓ Enough questions. Every student gets a unique set of ${quiz.questions_per_student}.`
+              : `Add ${needed - questions.length} more question(s). You need ${needed} for unique sets.`)
+          : (enough
+              ? `✓ Every student gets all ${questions.length} question(s) you've added.`
+              : `Add at least 1 question — every student gets all of them.`)}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 30, alignItems: 'start' }}>

@@ -35,10 +35,13 @@ export default function QuizFlow() {
   const [result, setResult] = useState(null)
   const [recWarn, setRecWarn] = useState(false)
   const [uploadNote, setUploadNote] = useState('Uploading your recording…')
+  const [checking, setChecking] = useState(false)
+  const [check, setCheck] = useState(null)
 
   const recorder = useRecorder()
   const warnCount = useRef(0)
   const saveTimers = useRef({})
+  const mediaReady = useRef(false)
 
   // proctoring active during the quiz AND the review overlay
   const { enterFullscreen, exitFullscreen } = useProctoring(step === 'quiz', async () => {
@@ -72,10 +75,36 @@ export default function QuizFlow() {
     finally { setBusy(false) }
   }
 
+  async function runDeviceCheck() {
+    setErr(''); setChecking(true)
+    const res = { camera: false, mic: false, screen: false, net: 'ok', netInfo: '' }
+    try {
+      const r = await recorder.requestMedia()
+      res.camera = true; res.mic = true; res.screen = Boolean(r && r.screen)
+      mediaReady.current = true
+    } catch {
+      mediaReady.current = false
+    }
+    try {
+      const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection
+      if (conn && conn.downlink != null) {
+        res.netInfo = `${conn.downlink} Mbps${conn.effectiveType ? ' · ' + conn.effectiveType : ''}`
+        res.net = conn.downlink >= 1 ? 'ok' : 'weak'
+      } else {
+        const t0 = performance.now()
+        await fetch(`${window.location.origin}/?cb=${Date.now()}`, { cache: 'no-store' })
+        const ms = performance.now() - t0
+        res.netInfo = `${Math.round(ms)} ms round-trip`
+        res.net = ms < 1500 ? 'ok' : 'weak'
+      }
+    } catch { res.net = 'weak'; res.netInfo = 'could not reach the server' }
+    setCheck(res); setChecking(false)
+  }
+
   async function begin() {
     setErr(''); setBusy(true)
     try {
-      await recorder.requestMedia()
+      if (!mediaReady.current) { await recorder.requestMedia(); mediaReady.current = true }
     } catch {
       setErr('You must allow your camera and microphone to take this exam. Please allow access and try again.')
       setBusy(false); return
@@ -164,14 +193,32 @@ export default function QuizFlow() {
             <li>Your answers <b>save automatically</b> — a refresh won't lose them.</li>
           </ul>
           <p style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064', margin: '14px 0 16px' }}>
-            When you click begin, your browser will ask to share your screen — choose your <b>entire screen</b>.
+            When you run the check, your browser will ask for your camera and to share your screen — choose your <b>entire screen</b>.
           </p>
+          <div style={{ border: '2px solid #131311', padding: 14, marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span className="label" style={{ margin: 0, fontWeight: 700 }}>Device check</span>
+              <button type="button" className="btn" style={{ padding: '6px 12px' }} disabled={checking} onClick={runDeviceCheck}>
+                {checking ? 'CHECKING…' : (check ? 'RE-CHECK' : 'RUN CHECK')}
+              </button>
+            </div>
+            {check && (
+              <div style={{ marginTop: 10 }}>
+                {recorder.cameraStream && <InlinePreview stream={recorder.cameraStream} />}
+                <CheckRow ok={check.camera} label="Camera" bad="Not allowed — allow it in your browser, then re-check" />
+                <CheckRow ok={check.mic} label="Microphone" bad="Not allowed" />
+                <CheckRow ok={check.screen} warn label="Screen share" bad="Not shared — you'll be asked again at Begin" />
+                <CheckRow ok={check.net === 'ok'} warn={check.net === 'weak'} label="Internet" info={check.netInfo} bad="Weak connection — use a stronger network if you can" />
+                {!check.camera && <p style={{ color: '#c72620', fontSize: 13, marginTop: 8 }}>Camera + microphone are required. Allow them and re-check.</p>}
+              </div>
+            )}
+          </div>
           <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, margin: '0 0 18px', cursor: 'pointer', fontSize: 14, lineHeight: 1.4 }}>
             <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ marginTop: 3 }} />
             <span>I understand and <b>consent</b> to my camera, microphone and screen being recorded during this exam. The recording is private to my teacher.</span>
           </label>
-          <button className="btn btn-primary" style={{ width: '100%' }} disabled={busy || !consent} onClick={begin}>
-            {busy ? 'STARTING…' : 'ALLOW & BEGIN EXAM →'}
+          <button className="btn btn-primary" style={{ width: '100%' }} disabled={busy || !consent || !check?.camera} onClick={begin}>
+            {busy ? 'STARTING…' : (check?.camera ? 'BEGIN EXAM →' : 'RUN DEVICE CHECK FIRST')}
           </button>
           {err && <p role="alert" style={{ color: '#c72620', marginTop: 14, fontSize: 14 }}>{err}</p>}
         </div>
@@ -305,6 +352,24 @@ export default function QuizFlow() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function InlinePreview({ stream }) {
+  const ref = useRef(null)
+  useEffect(() => { if (ref.current && stream) ref.current.srcObject = stream }, [stream])
+  return <video ref={ref} autoPlay muted playsInline style={{ width: '100%', maxHeight: 180, objectFit: 'cover', background: '#000', transform: 'scaleX(-1)', marginBottom: 10 }} />
+}
+
+function CheckRow({ ok, warn, label, info, bad }) {
+  const color = ok ? '#1f9d55' : warn ? '#b8860b' : '#e5322d'
+  const icon = ok ? '✓' : warn ? '⚠' : '✗'
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '4px 0', fontSize: 14 }}>
+      <span style={{ color, fontWeight: 700, width: 16 }}>{icon}</span>
+      <span style={{ fontWeight: 700 }}>{label}</span>
+      <span style={{ color: '#757064', fontSize: 12 }}>{ok ? (info || 'ready') : bad}</span>
     </div>
   )
 }

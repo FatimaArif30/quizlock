@@ -692,14 +692,20 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
     ;(async () => {
       const sids = students.map((s) => s.id)
       if (!sids.length) { setStats((p) => ({ ...(p || {}), hardest: [] })); return }
-      const { data: ans } = await supabase.from('answers').select('question_id,is_correct').in('student_id', sids)
+      const { data: ans } = await supabase.from('answers').select('student_id,question_id,is_correct,awarded').in('student_id', sids)
       if (!alive || !ans) return
+      const typeById = Object.fromEntries(questions.map((q) => [q.id, q.type]))
       const map = {}
-      ans.forEach((a) => { const m = map[a.question_id] || { t: 0, c: 0 }; m.t++; if (a.is_correct) m.c++; map[a.question_id] = m })
+      const needSet = new Set()
+      ans.forEach((a) => {
+        const m = map[a.question_id] || { t: 0, c: 0 }; m.t++; if (a.is_correct) m.c++; map[a.question_id] = m
+        const ty = typeById[a.question_id]
+        if ((ty === 'text' || ty === 'code') && a.awarded == null) needSet.add(a.student_id)
+      })
       const byId = Object.fromEntries(questions.map((q) => [q.id, q.prompt]))
       const hardest = Object.entries(map).map(([id, m]) => ({ prompt: byId[id] || '(question)', pct: Math.round(100 * m.c / m.t), n: m.t }))
         .sort((a, b) => a.pct - b.pct).slice(0, 5)
-      setStats((p) => ({ ...(p || {}), hardest }))
+      setStats((p) => ({ ...(p || {}), hardest, needGrade: [...needSet] }))
     })()
     return () => { alive = false }
   }, [students, questions, quiz.pass_score]) // eslint-disable-line
@@ -728,6 +734,7 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
   const spreadCaps = ['0–20', '21–40', '41–60', '61–80', '81–100']
   const gaugeP = stats?.passRate != null ? stats.passRate : (stats?.avgPct != null ? stats.avgPct : 0)
   const gaugeHas = stats?.passRate != null || stats?.avgPct != null
+  const needGrade = new Set(stats?.needGrade || [])
 
   return (
     <div>
@@ -796,6 +803,9 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
                       <div style={{ fontWeight: 700 }}>{s.name}</div>
                       <div style={{ fontFamily: 'inherit', fontSize: 12, color: '#757064' }}>{s.student_id_txt || s.email}</div>
                       {recFlags(s)}
+                      {s.status === 'submitted' && needGrade.has(s.id) && (
+                        <div style={{ marginTop: 4 }}><span className="chip warn"><span className="led"></span>needs grading</span></div>
+                      )}
                     </td>
                     <td style={{ padding: '12px 8px' }}>{badge(s)}</td>
                     <td style={{ padding: '12px 8px', fontFamily: 'inherit' }}>{s.score != null ? `${s.score}/${s.total_points}` : '—'}</td>
@@ -870,6 +880,9 @@ function StudentDetail({ student, onClose, onGraded, toast }) {
     } catch (e) { toast(e.message, 'err') }
   }
 
+  const manualAns = answers.filter((a) => { const t = a.questions?.type; return t === 'text' || t === 'code' })
+  const manualDone = manualAns.filter((a) => a.awarded != null).length
+
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(19,19,17,.6)', zIndex: 50, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: 24, overflowY: 'auto' }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: '#f2f1ec', border: '1px solid var(--line)', width: 900, maxWidth: '100%', padding: 28, marginTop: 20 }}>
@@ -903,7 +916,12 @@ function StudentDetail({ student, onClose, onGraded, toast }) {
                   ? <span style={{ color: '#1f9d55', fontWeight: 700 }}>✓ sent</span>
                   : <span style={{ color: '#757064' }}>— not recorded (older submission or still sending)</span>}
             </div>
-            <div className="label" style={{ margin: '24px 0 8px' }}>Answers</div>
+            <div style={{ margin: '24px 0 8px', display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+              <span className="label" style={{ margin: 0 }}>Answers</span>
+              {manualAns.length > 0 && (
+                <span className={`chip ${manualDone === manualAns.length ? 'good' : 'warn'}`} style={{ fontSize: 11 }}><span className="led"></span>{manualDone}/{manualAns.length} manual graded</span>
+              )}
+            </div>
             {answers.length === 0 && <p style={{ color: '#757064' }}>No answers recorded.</p>}
             {answers.map((a) => {
               const q = a.questions || {}

@@ -165,9 +165,9 @@ export default function QuizFlow() {
   if (step === 'entry') {
     return (
       <Center>
-        <form onSubmit={register} style={{ width: 420, maxWidth: '100%' }}>
+        <form onSubmit={register} className="card" style={{ width: 420, maxWidth: '100%', padding: 28 }}>
           <span style={{ fontWeight: 800, fontSize: 22 }}>QUIZLOCK<span style={{ color: '#e5322d' }}>.</span></span>
-          <h1 style={{ fontSize: 34, fontWeight: 800, letterSpacing: '-1px', margin: '18px 0 4px' }}>Enter the exam</h1>
+          <h1 style={{ fontSize: 25, fontWeight: 700, letterSpacing: '-.02em', margin: '0 0 4px' }}>Enter the exam</h1>
           <p className="label" style={{ marginBottom: 22 }}>Your Student ID identifies you — you can take this quiz once.</p>
           <Field id="f-name" label="Full name" v={form.name} on={(v) => setForm({ ...form, name: v })} required />
           <Field id="f-sid" label="Student ID (required)" v={form.student_id} on={(v) => setForm({ ...form, student_id: v })} required />
@@ -184,18 +184,18 @@ export default function QuizFlow() {
   if (step === 'permission') {
     return (
       <Center>
-        <div style={{ width: 480, maxWidth: '100%' }}>
-          <h1 style={{ fontSize: 30, fontWeight: 800, letterSpacing: '-1px', margin: '0 0 14px' }}>Before you start</h1>
+        <div className="card" style={{ width: 480, maxWidth: '100%', padding: 28 }}>
+          <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-.02em', margin: '0 0 14px' }}>Before you start</h1>
           <ul style={{ fontSize: 16, lineHeight: 1.7, paddingLeft: 20 }}>
             <li>Your <b>camera, microphone and screen</b> will be recorded the whole time.</li>
             <li>The exam opens in <b>fullscreen</b>. Do not switch tabs or leave.</li>
             <li>You get <b>one warning</b>. Leaving again submits your quiz automatically.</li>
             <li>Your answers <b>save automatically</b> — a refresh won't lose them.</li>
           </ul>
-          <p style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064', margin: '14px 0 16px' }}>
+          <p style={{ fontFamily: 'inherit', fontSize: 12, color: '#757064', margin: '14px 0 16px' }}>
             When you run the check, your browser will ask for your camera and to share your screen — choose your <b>entire screen</b>.
           </p>
-          <div style={{ border: '2px solid #131311', padding: 14, marginBottom: 16 }}>
+          <div style={{ border: '1px solid var(--line)', padding: 14, marginBottom: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span className="label" style={{ margin: 0, fontWeight: 700 }}>Device check</span>
               <button type="button" className="btn" style={{ padding: '6px 12px' }} disabled={checking} onClick={runDeviceCheck}>
@@ -226,7 +226,7 @@ export default function QuizFlow() {
     )
   }
 
-  if (step === 'submitting') return <Center><p style={{ fontFamily: "'Space Mono',monospace" }}>{uploadNote}</p></Center>
+  if (step === 'submitting') return <Center><p style={{ fontFamily: 'inherit' }}>{uploadNote}</p></Center>
 
   if (step === 'done') {
     const showRes = result?.show_results
@@ -234,16 +234,16 @@ export default function QuizFlow() {
     const passed = showRes && result.pass_score != null && pct != null ? pct >= result.pass_score : null
     return (
       <Center>
-        <div style={{ textAlign: 'center', maxWidth: 480 }}>
+        <div className="card" style={{ textAlign: 'center', maxWidth: 480, padding: 32 }}>
           <div style={{ fontSize: 54 }}>✓</div>
-          <h1 style={{ fontSize: 32, fontWeight: 800, letterSpacing: '-1px', margin: '8px 0' }}>Quiz submitted</h1>
+          <h1 style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-.02em', margin: '8px 0' }}>Quiz submitted</h1>
           {showRes && (
             <div style={{ margin: '10px 0 16px' }}>
-              <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 26, fontWeight: 700 }}>
+              <div style={{ fontFamily: 'inherit', fontSize: 26, fontWeight: 700 }}>
                 {result.score} / {result.total_points}{pct != null ? ` · ${pct}%` : ''}
               </div>
               {passed != null && (
-                <div style={{ marginTop: 8, display: 'inline-block', padding: '4px 12px', fontFamily: "'Space Mono',monospace", fontSize: 13, fontWeight: 700, color: '#fff', background: passed ? '#1f9d55' : '#e5322d' }}>
+                <div style={{ marginTop: 8, display: 'inline-block', padding: '4px 12px', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, color: '#fff', background: passed ? '#1f9d55' : '#e5322d' }}>
                   {passed ? 'PASSED' : 'DID NOT PASS'}
                 </div>
               )}
@@ -275,7 +275,7 @@ export default function QuizFlow() {
 
   return (
     <div style={{ width: '100%', minHeight: '100%', background: '#f2f1ec', color: '#131311', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '22px 44px', borderBottom: '2px solid #131311', flexWrap: 'wrap', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '22px 44px', borderBottom: '1px solid var(--line)', flexWrap: 'wrap', gap: 12 }}>
         <span style={{ fontWeight: 800, fontSize: 20 }}>QUIZLOCK<span style={{ color: '#e5322d' }}>.</span></span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 22 }}>
           <span className="label" style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{data?.quiz_title}</span>
@@ -286,16 +286,16 @@ export default function QuizFlow() {
       <div style={{ flex: 1, display: 'flex', padding: '46px 44px', boxSizing: 'border-box', gap: 44, flexWrap: 'wrap' }}>
         <div style={{ width: 560, flexShrink: 0, minWidth: 300 }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20 }}>
-            <span style={{ fontWeight: 800, fontSize: 130, lineHeight: .8, letterSpacing: '-5px' }}>{String(idx + 1).padStart(2, '0')}</span>
-            <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 14, color: '#757064', marginTop: 10, letterSpacing: 1 }}>/ {total}<br />QUESTIONS</span>
+            <span style={{ fontWeight: 700, fontSize: 66, lineHeight: .9, letterSpacing: '-.04em', color: 'var(--muted)' }}>{String(idx + 1).padStart(2, '0')}</span>
+            <span style={{ fontFamily: 'inherit', fontSize: 14, color: '#757064', marginTop: 10, letterSpacing: 1 }}>/ {total}<br />QUESTIONS</span>
           </div>
-          <h1 style={{ fontWeight: 700, fontSize: 40, lineHeight: 1.1, margin: '26px 0 0', letterSpacing: '-1.2px', maxWidth: 520 }}>{q?.prompt}</h1>
-          <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, letterSpacing: 1, color: '#757064', marginTop: 22 }}>
+          <h1 style={{ fontWeight: 600, fontSize: 27, lineHeight: 1.25, margin: '18px 0 0', letterSpacing: '-.01em', maxWidth: 560 }}>{q?.prompt}</h1>
+          <div style={{ fontFamily: 'inherit', fontSize: 12, letterSpacing: 1, color: '#757064', marginTop: 22 }}>
             {q?.type === 'mcq' ? 'SELECT ONE ANSWER' : q?.type === 'truefalse' ? 'TRUE OR FALSE?' : q?.type === 'code' ? 'WRITE YOUR CODE' : 'WRITE YOUR ANSWER'}
           </div>
         </div>
 
-        <div style={{ flex: 1, borderLeft: '2px solid #131311', paddingLeft: 44, minWidth: 320 }}>
+        <div style={{ flex: 1, borderLeft: '1px solid var(--line)', paddingLeft: 44, minWidth: 320 }}>
           {q && <Question q={q} value={answers[q.id]} onChange={(v) => setAnswer(q.id, v)} />}
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 40, flexWrap: 'wrap' }}>
@@ -314,17 +314,17 @@ export default function QuizFlow() {
       {showReview && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(19,19,17,.7)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 60, padding: 24, overflowY: 'auto' }}>
           <div style={{ background: '#f2f1ec', border: '3px solid #131311', width: 560, maxWidth: '100%', padding: 28, marginTop: 24 }}>
-            <h2 style={{ fontSize: 26, fontWeight: 800, margin: '0 0 6px', letterSpacing: '-.6px' }}>Review before you submit</h2>
+            <h2 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 6px', letterSpacing: '-.02em' }}>Review before you submit</h2>
             <p className="label" style={{ marginBottom: 16 }}>{answeredCount} of {total} answered{answeredCount < total ? ` · ${total - answeredCount} still blank` : ''}</p>
             <div style={{ maxHeight: 320, overflowY: 'auto', marginBottom: 18 }}>
               {questions.map((x, i) => {
                 const done = answers[x.id] != null && String(answers[x.id]).trim() !== ''
                 return (
                   <button key={x.id} onClick={() => { setIdx(i); setShowReview(false) }}
-                    style={{ display: 'flex', width: '100%', textAlign: 'left', alignItems: 'center', gap: 12, padding: '10px 12px', marginBottom: 6, cursor: 'pointer', background: '#fff', border: '1.5px solid #dddbd1' }}>
-                    <span style={{ fontFamily: "'Space Mono',monospace", fontWeight: 700, width: 26 }}>{String(i + 1).padStart(2, '0')}</span>
+                    style={{ display: 'flex', width: '100%', textAlign: 'left', alignItems: 'center', gap: 12, padding: '10px 12px', marginBottom: 6, cursor: 'pointer', background: '#fff', border: '1.5px solid var(--line)' }}>
+                    <span style={{ fontFamily: 'inherit', fontWeight: 700, width: 26 }}>{String(i + 1).padStart(2, '0')}</span>
                     <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.prompt}</span>
-                    <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 11, color: done ? '#1f9d55' : '#e5322d' }}>{done ? 'ANSWERED' : 'BLANK'}</span>
+                    <span style={{ fontFamily: 'inherit', fontSize: 11, color: done ? '#1f9d55' : '#e5322d' }}>{done ? 'ANSWERED' : 'BLANK'}</span>
                   </button>
                 )
               })}
@@ -344,7 +344,7 @@ export default function QuizFlow() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(19,19,17,.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 70, padding: 24 }}>
           <div style={{ background: '#f2f1ec', border: '3px solid #e5322d', padding: 36, maxWidth: 460 }}>
             <div className="label" style={{ color: '#e5322d' }}>Warning</div>
-            <h2 style={{ fontSize: 26, fontWeight: 800, margin: '10px 0 12px', letterSpacing: '-.5px' }}>Stay on the exam</h2>
+            <h2 style={{ fontSize: 22, fontWeight: 700, margin: '10px 0 12px', letterSpacing: '-.02em' }}>Stay on the exam</h2>
             <p style={{ fontSize: 15, lineHeight: 1.5 }}>{warnMsg}</p>
             <button className="btn btn-primary" style={{ marginTop: 18 }} onClick={async () => { setWarnMsg(''); await enterFullscreen() }}>
               GOT IT — CONTINUE →

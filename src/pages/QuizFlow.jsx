@@ -33,6 +33,7 @@ export default function QuizFlow() {
   const [showReview, setShowReview] = useState(false)
   const [consent, setConsent] = useState(false)
   const [result, setResult] = useState(null)
+  const [recWarn, setRecWarn] = useState(false)
   const [uploadNote, setUploadNote] = useState('Uploading your recording…')
 
   const recorder = useRecorder()
@@ -119,6 +120,7 @@ export default function QuizFlow() {
       setUploadNote('Finishing your recording…'); await recorder.stop()
       setUploadNote('Uploading your recording… (this can take a moment)')
       const urls = await recorder.uploadAll(auth.student_id)
+      if (!urls.ok) setRecWarn(true)
       await rpc('set_recording_urls', { p_student_id: auth.student_id, p_token: auth.token, p_camera: urls.cameraUrl, p_screen: urls.screenUrl }).catch(() => {})
     } catch (e3) { console.error('recording upload failed', e3) }
 
@@ -201,9 +203,17 @@ export default function QuizFlow() {
               <p style={{ fontSize: 12, color: '#757064', marginTop: 8 }}>Text/code answers may be graded by your teacher later.</p>
             </div>
           )}
-          <p style={{ fontSize: 16, lineHeight: 1.6 }}>
-            Your recording is being sent to you and your teacher by email. You can close this tab now.
-          </p>
+          {recWarn ? (
+            <p role="alert" style={{ fontSize: 15, lineHeight: 1.6, color: '#c72620', fontWeight: 700 }}>
+              ⚠ Your answers were submitted, but your recording could not be uploaded (likely a
+              network issue). Please tell your teacher right away, and do not close this tab until
+              you have — they may ask you to stay connected a moment longer.
+            </p>
+          ) : (
+            <p style={{ fontSize: 16, lineHeight: 1.6 }}>
+              Your recording is being sent to you and your teacher by email. You can close this tab now.
+            </p>
+          )}
           {err && <p style={{ color: '#757064', fontSize: 13, marginTop: 12 }}>Note: {err}</p>}
         </div>
       </Center>

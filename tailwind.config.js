@@ -1,23 +1,28 @@
 /** @type {import('tailwindcss').Config} */
-// QuizLock design tokens — "Mono Ink + Red" (Editorial Bold)
+// QuizLock design tokens — clean SaaS look, "Mono Ink + Red" palette
 export default {
   content: ['./index.html', './src/**/*.{js,jsx}'],
   theme: {
     extend: {
       colors: {
-        paper: '#f2f1ec',
+        bg: '#edece6',
+        card: '#ffffff',
         ink: '#131311',
+        'ink-2': '#3a3833',
+        muted: '#77726a',
         accent: '#e5322d',
         'accent-dark': '#c72620',
-        muted: '#757064',
-        rule: '#dddbd1',
-        'rule-strong': '#131311',
+        line: '#e6e4dc',
+        track: '#e9e7df',
         good: '#1f9d55',
+        warn: '#c4791b',
+        bad: '#e5322d',
       },
       fontFamily: {
-        display: ['"Bricolage Grotesque"', 'system-ui', 'sans-serif'],
-        mono: ['"Space Mono"', 'ui-monospace', 'monospace'],
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        display: ['Inter', 'system-ui', 'sans-serif'],
       },
+      borderRadius: { xl: '16px' },
     },
   },
   plugins: [],

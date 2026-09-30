@@ -34,24 +34,24 @@ export default function TeacherLogin() {
 
   return (
     <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', alignItems: 'center', padding: '26px 44px', borderBottom: '2px solid #131311' }}>
-        <span style={{ fontWeight: 800, fontSize: 21, letterSpacing: '-.6px' }}>
-          QUIZLOCK<span style={{ color: '#e5322d' }}>.</span>
+      <header style={{ display: 'flex', alignItems: 'center', padding: '18px 28px', borderBottom: '1px solid var(--line)', background: 'var(--card)' }}>
+        <span style={{ fontWeight: 800, fontSize: 19, letterSpacing: '-.02em' }}>
+          QUIZLOCK<span style={{ color: 'var(--accent)' }}>.</span>
         </span>
-      </div>
+      </header>
 
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <form onSubmit={submit} style={{ width: 380, maxWidth: '100%' }}>
-          <h1 style={{ fontSize: 38, fontWeight: 800, letterSpacing: '-1px', margin: '0 0 6px' }}>
+        <form onSubmit={submit} className="card" style={{ width: 400, maxWidth: '100%', padding: 28 }}>
+          <h1 style={{ fontSize: 25, fontWeight: 700, letterSpacing: '-.02em', margin: '0 0 4px' }}>
             {mode === 'login' ? 'Teacher login' : 'Create account'}
           </h1>
-          <p className="label" style={{ marginBottom: 24 }}>
-            {mode === 'login' ? 'Sign in to build quizzes' : 'Sign up to start'}
+          <p style={{ color: 'var(--muted)', fontSize: 14, margin: '0 0 22px' }}>
+            {mode === 'login' ? 'Sign in to build and run your quizzes.' : 'Sign up to start creating quizzes.'}
           </p>
 
           {!isConfigured && (
-            <p style={{ background: '#fdecec', border: '2px solid #e5322d', padding: 12, fontSize: 13, marginBottom: 16 }}>
-              Supabase is not configured yet. Fill in your <b>.env</b> file (see README).
+            <p style={{ background: 'var(--bad-bg)', border: '1px solid var(--bad)', color: 'var(--bad)', padding: 12, borderRadius: 'var(--r-sm)', fontSize: 13, marginBottom: 16 }}>
+              Supabase isn't configured yet — fill in your <b>.env</b> file (see README).
             </p>
           )}
 
@@ -60,21 +60,21 @@ export default function TeacherLogin() {
             <input id="t-email" className="field" type="email" required value={email}
               onChange={(e) => setEmail(e.target.value)} style={{ marginTop: 6 }} />
           </div>
-          <div style={{ marginBottom: 22 }}>
+          <div style={{ marginBottom: 20 }}>
             <label className="label" htmlFor="t-pass">Password</label>
             <input id="t-pass" className="field" type="password" required minLength={6} value={password}
               onChange={(e) => setPassword(e.target.value)} style={{ marginTop: 6 }} />
           </div>
 
-          <button className="btn btn-primary" style={{ width: '100%' }} disabled={busy}>
-            {busy ? 'PLEASE WAIT…' : mode === 'login' ? 'LOG IN →' : 'SIGN UP →'}
+          <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} disabled={busy}>
+            {busy ? 'Please wait…' : mode === 'login' ? 'Log in' : 'Sign up'}
           </button>
 
-          {msg && <p style={{ fontSize: 13, color: '#c72620', marginTop: 14 }}>{msg}</p>}
+          {msg && <p role="alert" style={{ fontSize: 13, color: 'var(--accent)', marginTop: 14 }}>{msg}</p>}
 
           <button type="button" onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', marginTop: 20, fontFamily: "'Space Mono',monospace", fontSize: 12, color: '#757064', textDecoration: 'underline' }}>
-            {mode === 'login' ? "No account? Sign up" : 'Have an account? Log in'}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', marginTop: 18, fontSize: 13, color: 'var(--muted)', textDecoration: 'underline', padding: 0 }}>
+            {mode === 'login' ? 'No account? Sign up' : 'Have an account? Log in'}
           </button>
         </form>
       </div>

@@ -461,7 +461,7 @@ function QuizPanel({ quiz, questions, students, assignedIds, tab, setTab, toast,
       {tab === 'questions'
         ? <QuestionsTab quiz={quiz} questions={questions} needed={needed} allowedTypes={allowedTypes} assignedIds={assignedIds} toast={toast} onChange={onChange} />
         : tab === 'results'
-        ? <ResultsTab quiz={quiz} students={students} questions={questions} toast={toast} onChange={onChange} />
+        ? <ResultsTab quiz={quiz} students={students} questions={questions} toast={toast} onChange={onChange} onQuizChange={onQuizChange} />
         : <RosterTab quiz={quiz} toast={toast} />}
     </div>
   )
@@ -759,11 +759,12 @@ function BulkAdd({ quizId, allowedTypes, toast, onChange }) {
 }
 
 // ---------- Results tab ----------
-function ResultsTab({ quiz, students, questions, toast, onChange }) {
+function ResultsTab({ quiz, students, questions, toast, onChange, onQuizChange }) {
   const [sel, setSel] = useState(null)
   const [stats, setStats] = useState(null)
   const [q, setQ] = useState('')
   const [roster, setRoster] = useState([])
+  const [emailing, setEmailing] = useState(false)
 
   // load the uploaded roster (for attendance: who hasn't attempted)
   useEffect(() => {
@@ -817,6 +818,37 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
     try { await rpc('teacher_reallow_student', { p_student_id: s.id }); onChange(); toast(`${s.name} can retake`) }
     catch (e) { toast(e.message, 'err') }
   }
+  const published = !!quiz.results_published
+  async function togglePublish() {
+    const next = !published
+    if (next && !window.confirm('Publish results? This freezes all grading until you unpublish, and lets you email students their results.')) return
+    const { data, error } = await supabase.from('quizzes')
+      .update({ results_published: next, results_published_at: next ? new Date().toISOString() : null })
+      .eq('id', quiz.id).select().single()
+    if (error) { toast(error.message, 'err'); return }
+    onQuizChange && onQuizChange(data)
+    toast(next ? 'Results published — grading locked' : 'Results unpublished — you can edit again')
+  }
+  async function emailAll() {
+    const pending = students.filter((s) => s.status === 'submitted' && s.email && !s.results_emailed_at)
+    if (!pending.length) { toast('No one left to email — everyone submitted has already been sent their result.'); return }
+    if (!window.confirm(`Email results to ${pending.length} student(s) who haven't been sent yet?`)) return
+    setEmailing(true)
+    const { data, error } = await supabase.functions.invoke('send-results-all', { body: { quiz_id: quiz.id } })
+    setEmailing(false)
+    if (error) { toast(error.message || 'Email failed', 'err'); return }
+    onChange()
+    toast(`Emailed ${data?.sent ?? 0}${data?.failed ? ` · ${data.failed} failed` : ''}`, data?.failed ? 'err' : undefined)
+  }
+  async function emailOne(s) {
+    if (!s.email) { toast('That student has no email on file.', 'err'); return }
+    setEmailing(true)
+    const { data, error } = await supabase.functions.invoke('send-results-all', { body: { quiz_id: quiz.id, student_id: s.id } })
+    setEmailing(false)
+    if (error) { toast(error.message || 'Email failed', 'err'); return }
+    onChange()
+    toast(data?.failed ? `Failed: ${(data.errors || [])[0] || 'see logs'}` : `Result emailed to ${s.name || s.email}`, data?.failed ? 'err' : undefined)
+  }
   const badge = (s) => {
     const LBL = { submitted: 'Submitted', in_progress: 'In progress', blocked: 'Blocked', not_attempted: 'Not attempted', not_started: 'Not started', registered: 'Registered' }
     const cls = s.status === 'submitted' ? 'good' : s.status === 'in_progress' ? 'warn' : s.status === 'blocked' ? 'bad' : 'neutral'
@@ -839,6 +871,7 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
   const gaugeHas = stats?.passRate != null || stats?.avgPct != null
   const needGrade = new Set(stats?.needGrade || [])
   const hasRoster = roster.length > 0
+  const pendingCount = students.filter((s) => s.status === 'submitted' && s.email && !s.results_emailed_at).length
   const seen = new Set(students.map((s) => (s.student_id_txt || '').toLowerCase()))
   const notAttempted = hasRoster
     ? roster
@@ -855,6 +888,16 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
 
   return (
     <div>
+      <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '14px 18px', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span className={`chip ${published ? 'good' : 'neutral'}`}><span className="led"></span>{published ? 'Results published' : 'Draft — not published'}</span>
+          <span className="label" style={{ margin: 0, color: 'var(--muted)' }}>{published ? 'Grading is locked. You can email students their results.' : 'Publish to lock grades and email results.'}</span>
+        </div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {published && <button className="btn btn-primary" disabled={emailing} onClick={emailAll}>{emailing ? 'Emailing…' : `Email all (${pendingCount})`}</button>}
+          <button className="btn" onClick={togglePublish} style={published ? {} : { background: 'var(--ink)', color: '#fff', borderColor: 'var(--ink)' }}>{published ? 'Unpublish to edit' : 'Publish results'}</button>
+        </div>
+      </div>
       {/* summary */}
       {stats && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 18 }}>
@@ -926,6 +969,11 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
                       {s.status === 'submitted' && needGrade.has(s.id) && (
                         <div style={{ marginTop: 4 }}><span className="chip warn"><span className="led"></span>needs grading</span></div>
                       )}
+                      {s.results_email_error
+                        ? <div style={{ marginTop: 4 }}><span className="chip bad"><span className="led"></span>result email failed</span></div>
+                        : s.results_emailed_at
+                          ? <div style={{ marginTop: 4 }}><span className="chip good"><span className="led"></span>result sent</span></div>
+                          : null}
                     </td>
                     <td style={{ padding: '12px 8px' }}>{badge(s)}</td>
                     <td style={{ padding: '12px 8px', fontFamily: 'inherit' }}>{s.score != null ? `${s.score}/${s.total_points}` : '—'}</td>
@@ -935,7 +983,9 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
                         ? <span className="label" style={{ color: '#757064' }}>—</span>
                         : (<>
                             <button className="btn btn-primary" style={{ padding: '6px 12px', marginRight: 6 }} onClick={() => setSel(s)}>VIEW</button>
-                            <button className="btn" style={{ padding: '6px 12px' }} onClick={() => reallow(s)}>RE-ALLOW</button>
+                            {published
+                              ? <button className="btn" style={{ padding: '6px 12px' }} disabled={emailing || s.status !== 'submitted' || !s.email} onClick={() => emailOne(s)}>{s.results_emailed_at ? 'RESEND' : 'EMAIL'}</button>
+                              : <button className="btn" style={{ padding: '6px 12px' }} onClick={() => reallow(s)}>RE-ALLOW</button>}
                           </>)}
                     </td>
                   </tr>
@@ -958,13 +1008,13 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
         </div>
       )}
 
-      {sel && <StudentDetail student={sel} onClose={() => setSel(null)} onGraded={onChange} toast={toast} />}
+      {sel && <StudentDetail student={sel} onClose={() => setSel(null)} onGraded={onChange} toast={toast} frozen={published} />}
     </div>
   )
 }
 
 // ---------- Student detail (videos + answers + grading) ----------
-function StudentDetail({ student, onClose, onGraded, toast }) {
+function StudentDetail({ student, onClose, onGraded, toast, frozen }) {
   const [answers, setAnswers] = useState([])
   const [camUrl, setCamUrl] = useState(null)
   const [scrUrl, setScrUrl] = useState(null)
@@ -996,6 +1046,7 @@ function StudentDetail({ student, onClose, onGraded, toast }) {
   }, [student.id]) // eslint-disable-line
 
   async function grade(answerId, awarded) {
+    if (frozen) { toast('Results are published — unpublish to edit grades.', 'err'); return }
     try {
       const res = await rpc('teacher_grade_answer', { p_answer_id: answerId, p_awarded: awarded })
       setScore(res.score)
@@ -1042,6 +1093,7 @@ function StudentDetail({ student, onClose, onGraded, toast }) {
             </div>
             <div style={{ margin: '24px 0 8px', display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
               <span className="label" style={{ margin: 0 }}>Answers</span>
+              {frozen && <span className="chip neutral" style={{ fontSize: 11 }}><span className="led"></span>frozen — unpublish to edit</span>}
               {manualAns.length > 0 && (
                 <span className={`chip ${manualDone === manualAns.length ? 'good' : 'warn'}`} style={{ fontSize: 11 }}><span className="led"></span>{manualDone}/{manualAns.length} manual graded</span>
               )}
@@ -1069,7 +1121,7 @@ function StudentDetail({ student, onClose, onGraded, toast }) {
                       {a.is_correct ? <span style={{ color: '#1f9d55' }}>✓ Correct (+{q.points})</span>
                         : <span style={{ color: '#e5322d' }}>✗ Wrong · correct answer: {q.correct_key}</span>}
                     </div>
-                  ) : <GradeRow answer={a} maxPoints={q.points || 0} onGrade={grade} />}
+                  ) : <GradeRow answer={a} maxPoints={q.points || 0} onGrade={grade} frozen={frozen} />}
                 </div>
               )
             })}
@@ -1328,13 +1380,13 @@ function RosterTab({ quiz, toast }) {
   )
 }
 
-function GradeRow({ answer, maxPoints, onGrade }) {
+function GradeRow({ answer, maxPoints, onGrade, frozen }) {
   const [val, setVal] = useState(answer.awarded ?? '')
   return (
     <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
       <span className="label">Award points (0–{maxPoints})</span>
-      <input className="field" type="number" min={0} max={maxPoints} value={val} onChange={(e) => setVal(e.target.value)} style={{ width: 90 }} />
-      <button className="btn btn-primary" style={{ padding: '8px 14px' }}
+      <input className="field" type="number" min={0} max={maxPoints} value={val} disabled={frozen} onChange={(e) => setVal(e.target.value)} style={{ width: 90 }} />
+      <button className="btn btn-primary" style={{ padding: '8px 14px' }} disabled={frozen}
         onClick={() => onGrade(answer.id, Math.max(0, Math.min(parseFloat(val) || 0, maxPoints)))}>SAVE GRADE</button>
       {answer.awarded != null && <span style={{ fontFamily: 'inherit', fontSize: 12, color: '#1f9d55' }}>graded: {answer.awarded}</span>}
     </div>

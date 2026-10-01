@@ -340,8 +340,8 @@ function QuizForm({ initial, submitLabel, onSubmit, onCancel, wide }) {
   const distCard = card(4, 'Question distribution', (
     <>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        {[['same', 'Same for everyone', 'Every student sees the identical question set.'],
-          ['unique', 'Unique per student', 'Each student gets a randomized set from the pool.']].map(([val, t, d]) => {
+        {[['same', 'Same for everyone', 'Everyone sees the same set of questions.'],
+          ['unique', 'Unique per student', 'Each student gets their own random mix.']].map(([val, t, d]) => {
           const on = (val === 'unique') === uniqueQ
           return (
             <button type="button" key={val} onClick={() => setUniqueQ(val === 'unique')}
@@ -442,7 +442,7 @@ function CreateWizard({ teacherId, onCancel, onCreated, toast }) {
 
   async function doCreate() {
     if (!title.trim()) { setStep(0); return }
-    if (!chosen.length) { setStep(1); toast('Pick at least one question type.', 'err'); return }
+    if (!chosen.length) { setStep(1); toast('Pick at least one kind of question.', 'err'); return }
     const DEFP = { mcq: 1, truefalse: 1, text: 2, code: 5 }
     const vals = {
       title: title.trim(),
@@ -949,7 +949,7 @@ function QuestionEditor({ question, allowedTypes, toast, onClose, onSaved }) {
         {type === 'truefalse' && (<div style={{ marginBottom: 14 }}><label className="label">Correct answer</label><TrueFalsePicker tf={tf} setTf={setTf} /></div>)}
         {type === 'mcq' && (
           <div style={{ marginBottom: 14 }}>
-            <label className="label">Options — select the correct one</label>
+            <label className="label">Options — tick the correct one</label>
             {['A', 'B', 'C', 'D'].map((k) => (
               <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
                 <input type="radio" name="editcorrect" checked={correct === k} onChange={() => setCorrect(k)} />
@@ -974,7 +974,7 @@ function buildQuestion(type, prompt, opts, correct, tf, points, codeLang) {
   if (type === 'mcq') {
     options = Object.entries(opts).filter(([, v]) => v.trim()).map(([key, text]) => ({ key, text: text.trim() }))
     correct_key = correct
-    if (options.length < 2 || !options.some((o) => o.key === correct)) return { error: 'MCQ needs at least 2 options and a correct answer among them.' }
+    if (options.length < 2 || !options.some((o) => o.key === correct)) return { error: 'Add at least two options and mark which one's correct.' }
   } else if (type === 'truefalse') {
     options = [{ key: 'True', text: 'True' }, { key: 'False', text: 'False' }]
     correct_key = tf
@@ -1075,7 +1075,7 @@ function BulkAdd({ quizId, allowedTypes, toast, onChange }) {
 
   async function importAll() {
     const { ok: rows, bad } = csvToQuestions(text)
-    if (!rows.length) { toast('No valid questions found — check the format.', 'err'); return }
+    if (!rows.length) { toast('Couldn't read any questions — double-check the format and try again.', 'err'); return }
     const allowed = new Set(allowedTypes && allowedTypes.length ? allowedTypes : ALL_TYPES)
     const kept = rows.filter((r) => allowed.has(r.type))
     const skipped = rows.length - kept.length + bad
@@ -1189,7 +1189,7 @@ function ResultsTab({ quiz, students, questions, toast, onChange, onQuizChange }
     toast(`Emailed ${data?.sent ?? 0}${data?.failed ? ` · ${data.failed} failed` : ''}`, data?.failed ? 'err' : undefined)
   }
   async function emailOne(s) {
-    if (!s.email) { toast('That student has no email on file.', 'err'); return }
+    if (!s.email) { toast('That student hasn't given an email yet.', 'err'); return }
     setEmailing(true)
     const { data, error } = await supabase.functions.invoke('send-results-all', { body: { quiz_id: quiz.id, student_id: s.id } })
     setEmailing(false)
@@ -1649,7 +1649,7 @@ function RosterTab({ quiz, toast }) {
   }
 
   async function saveParsed(parsed) {
-    if (!parsed.length) { toast('No rows found. One student per line: name and student ID (any order).', 'err'); return }
+    if (!parsed.length) { toast('Couldn't find any names — put one student per line: their name and student ID, in any order.', 'err'); return }
     const seen = new Set(); const uniq = []
     for (const pr of parsed) { const k = pr.student_id_txt.toLowerCase(); if (seen.has(k)) continue; seen.add(k); uniq.push(pr) }
     setBusy(true)

@@ -157,15 +157,12 @@ export default function TeacherDashboard() {
 
         <div style={{ flex: 1, padding: 32, overflowY: 'auto' }}>
           {creating && (
-            <div style={{ maxWidth: 480 }}>
-              <h2 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-.02em', margin: '0 0 14px' }}>Create a quiz</h2>
-              <QuizForm initial={{}} submitLabel="CREATE" onCancel={() => setCreating(false)}
-                onSubmit={async (vals) => {
-                  const { error } = await supabase.from('quizzes').insert({ teacher_id: user.id, ...vals })
-                  if (error) { showToast(error.message, 'err'); return }
-                  setCreating(false); await loadQuizzes(); showToast('Quiz created')
-                }} />
-            </div>
+            <QuizForm initial={{}} wide submitLabel="Create quiz" onCancel={() => setCreating(false)}
+              onSubmit={async (vals) => {
+                const { error } = await supabase.from('quizzes').insert({ teacher_id: user.id, ...vals })
+                if (error) { showToast(error.message, 'err'); return }
+                setCreating(false); await loadQuizzes(); showToast('Quiz created')
+              }} />
           )}
           {!creating && !active && <p style={{ color: 'var(--muted)' }}>Select a quiz, or create a new one.</p>}
           {!creating && active && loading && <p style={{ color: 'var(--muted)' }}>Loading…</p>}
@@ -186,7 +183,7 @@ export default function TeacherDashboard() {
 }
 
 // ---------- Quiz settings form (shared by New + Edit) ----------
-function QuizForm({ initial, submitLabel, onSubmit, onCancel }) {
+function QuizForm({ initial, submitLabel, onSubmit, onCancel, wide }) {
   const [title, setTitle] = useState(initial.title || '')
   const [nStu, setNStu] = useState(initial.num_students ?? 10)
   const [perStu, setPerStu] = useState(initial.questions_per_student ?? 10)
@@ -217,80 +214,159 @@ function QuizForm({ initial, submitLabel, onSubmit, onCancel }) {
     })
   }
 
-  return (
-    <div style={{ border: '1px solid var(--line)', padding: 16 }}>
-      <input className="field" placeholder="Quiz title" value={title} onChange={(e) => setTitle(e.target.value)} style={{ marginBottom: 10 }} />
-      <label className="label">Question distribution</label>
-      <select className="field" value={uniqueQ ? 'unique' : 'same'} onChange={(e) => setUniqueQ(e.target.value === 'unique')} style={{ margin: '4px 0 10px' }}>
-        <option value="same">Same questions for everyone</option>
-        <option value="unique">Unique set per student (needs a bigger pool)</option>
-      </select>
-      <label className="label">How many students?</label>
-      <input className="field" type="number" min={1} value={nStu} onChange={(e) => setNStu(e.target.value)} style={{ margin: '4px 0 10px' }} />
-      {uniqueQ ? (
-        <>
-          <label className="label">Questions per student?</label>
-          <input className="field" type="number" min={1} value={perStu} onChange={(e) => setPerStu(e.target.value)} style={{ margin: '4px 0 10px' }} />
-        </>
-      ) : (
-        <p className="label" style={{ margin: '0 0 10px', color: '#757064' }}>Everyone gets all the questions you add.</p>
-      )}
-      <label className="label">Time limit (minutes)</label>
-      <input className="field" type="number" min={1} value={dur} onChange={(e) => setDur(e.target.value)} style={{ margin: '4px 0 10px' }} />
+  // plain helper (NOT a component) so inputs keep focus across renders
+  const card = (ix, ctitle, body, sub) => (
+    <div className="card" style={{ padding: 0 }}>
+      <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ width: 24, height: 24, borderRadius: 7, background: 'var(--ink)', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{ix}</span>
+        <h3 style={{ margin: 0, fontSize: 14.5, fontWeight: 700 }}>{ctitle}</h3>
+        {sub ? <span className="label" style={{ margin: 0, marginLeft: 'auto', color: 'var(--muted)' }}>{sub}</span> : null}
+      </div>
+      <div style={{ padding: '16px 18px' }}>{body}</div>
+    </div>
+  )
 
-      <label className="label">Question types</label>
-      <div style={{ display: 'flex', gap: 8, margin: '6px 0 12px', flexWrap: 'wrap' }}>
+  const basics = card(1, 'Basics', (
+    <>
+      <label className="label">Quiz title</label>
+      <input className="field" placeholder="e.g. Data Structures — Final Exam" value={title} onChange={(e) => setTitle(e.target.value)} style={{ margin: '4px 0 14px' }} />
+      <div style={{ display: 'grid', gridTemplateColumns: uniqueQ ? '1fr 1fr 1fr' : '1fr 1fr', gap: 14 }}>
+        <div>
+          <label className="label">How many students?</label>
+          <input className="field" type="number" min={1} value={nStu} onChange={(e) => setNStu(e.target.value)} style={{ marginTop: 4 }} />
+        </div>
+        {uniqueQ && (
+          <div>
+            <label className="label">Questions per student</label>
+            <input className="field" type="number" min={1} value={perStu} onChange={(e) => setPerStu(e.target.value)} style={{ marginTop: 4 }} />
+          </div>
+        )}
+        <div>
+          <label className="label">Time limit (min)</label>
+          <input className="field" type="number" min={1} value={dur} onChange={(e) => setDur(e.target.value)} style={{ marginTop: 4 }} />
+        </div>
+      </div>
+    </>
+  ))
+
+  const typesCard = card(2, 'Question types & points', (
+    <>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: chosen.length ? 14 : 0 }}>
         {ALL_TYPES.map((t) => (
-          <button type="button" key={t} onClick={() => setTypes({ ...types, [t]: !types[t] })} className="btn"
-            style={{ padding: '8px 10px', flex: '1 1 45%', fontSize: 11, background: types[t] ? '#131311' : 'transparent', color: types[t] ? '#f2f1ec' : '#131311' }}>
+          <button type="button" key={t} onClick={() => setTypes({ ...types, [t]: !types[t] })}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 7, border: types[t] ? '1px solid var(--ink)' : '1px solid var(--line)', background: types[t] ? 'var(--ink)' : '#fcfbf8', color: types[t] ? '#fff' : 'var(--ink-2)', borderRadius: 999, padding: '8px 14px', fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}>
             {TYPE_LABEL[t]} {types[t] ? '✓' : ''}
           </button>
         ))}
       </div>
-
       {chosen.length > 0 && (
-        <div style={{ marginBottom: 12 }}>
-          <label className="label">Default marks per type (editable per question later)</label>
-          {chosen.map((t) => (
-            <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-              <span className="label" style={{ width: 92 }}>{TYPE_LABEL[t]}</span>
-              <input className="field" type="number" min={1} value={typePts[t] ?? 1} onChange={(e) => setTypePts({ ...typePts, [t]: e.target.value })} style={{ width: 100 }} />
-              <span className="label">marks</span>
-            </div>
-          ))}
-        </div>
+        <>
+          <label className="label" style={{ marginBottom: 2 }}>Default marks per type (editable per question later)</label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10, marginTop: 8 }}>
+            {chosen.map((t) => (
+              <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="label" style={{ margin: 0, width: 92 }}>{TYPE_LABEL[t]}</span>
+                <input className="field" type="number" min={1} value={typePts[t] ?? 1} onChange={(e) => setTypePts({ ...typePts, [t]: e.target.value })} style={{ width: 80 }} />
+                <span className="label" style={{ margin: 0 }}>marks</span>
+              </div>
+            ))}
+          </div>
+        </>
       )}
+    </>
+  ))
 
-      <label className="label">Opens at (optional)</label>
-      <input className="field" type="datetime-local" value={openAt} onChange={(e) => setOpenAt(e.target.value)} style={{ margin: '4px 0 10px' }} />
-      <label className="label">Closes at (optional)</label>
-      <input className="field" type="datetime-local" value={closeAt} onChange={(e) => setCloseAt(e.target.value)} style={{ margin: '4px 0 12px' }} />
+  const windowCard = card(3, 'Availability window', (
+    <div style={{ display: 'grid', gridTemplateColumns: wide ? '1fr 1fr' : '1fr', gap: 14 }}>
+      <div>
+        <label className="label">Opens at</label>
+        <input className="field" type="datetime-local" value={openAt} onChange={(e) => setOpenAt(e.target.value)} style={{ marginTop: 4 }} />
+      </div>
+      <div>
+        <label className="label">Closes at</label>
+        <input className="field" type="datetime-local" value={closeAt} onChange={(e) => setCloseAt(e.target.value)} style={{ marginTop: 4 }} />
+      </div>
+    </div>
+  ), 'optional')
 
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, cursor: 'pointer' }}>
-        <input type="checkbox" checked={passOn} onChange={(e) => setPassOn(e.target.checked)} />
-        <span className="label" style={{ margin: 0 }}>Set a passing score</span>
-      </label>
-      {passOn && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-          <span className="label">Pass at</span>
-          <input className="field" type="number" min={0} max={100} value={passScore} onChange={(e) => setPassScore(e.target.value)} style={{ width: 90 }} />
-          <span className="label">%</span>
-        </div>
-      )}
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer' }}>
-        <input type="checkbox" checked={showResults} onChange={(e) => setShowResults(e.target.checked)} />
-        <span className="label" style={{ margin: 0 }}>Show students their result after submit</span>
-      </label>
-
-      <div style={{ background: '#131311', color: '#f2f1ec', padding: '10px 12px', fontFamily: 'inherit', fontSize: 12, marginBottom: 12 }}>
+  const distCard = card(4, 'Question distribution', (
+    <>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        {[['same', 'Same for everyone', 'Every student sees the identical question set.'],
+          ['unique', 'Unique per student', 'Each student gets a randomized set from the pool.']].map(([val, t, d]) => {
+          const on = (val === 'unique') === uniqueQ
+          return (
+            <button type="button" key={val} onClick={() => setUniqueQ(val === 'unique')}
+              style={{ flex: '1 1 150px', textAlign: 'left', border: on ? '1px solid var(--ink)' : '1px solid var(--line)', boxShadow: on ? '0 0 0 1px var(--ink) inset' : 'none', background: on ? '#fff' : '#fcfbf8', borderRadius: 10, padding: '12px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>{t}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3, lineHeight: 1.4 }}>{d}</div>
+            </button>
+          )
+        })}
+      </div>
+      <div style={{ background: 'var(--ink)', color: '#f2f1ec', padding: '10px 12px', borderRadius: 10, fontSize: 12, marginTop: 12 }}>
         {uniqueQ
           ? <>You'll need <b style={{ color: '#f0645f' }}>{needed}</b> questions total (unique sets).</>
           : <>Add as many questions as you like — every student gets all of them.</>}
       </div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button className="btn btn-primary" onClick={submit} style={{ flex: 1, padding: '10px' }}>{submitLabel}</button>
-        <button className="btn" onClick={onCancel} style={{ padding: '10px' }}>CANCEL</button>
+    </>
+  ))
+
+  const resultsCard = card(5, 'Results & passing', (
+    <>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+        <input type="checkbox" checked={passOn} onChange={(e) => setPassOn(e.target.checked)} />
+        <span className="label" style={{ margin: 0 }}>Set a passing score</span>
+      </label>
+      {passOn && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 0 0' }}>
+          <span className="label" style={{ margin: 0 }}>Pass at</span>
+          <input className="field" type="number" min={0} max={100} value={passScore} onChange={(e) => setPassScore(e.target.value)} style={{ width: 90 }} />
+          <span className="label" style={{ margin: 0 }}>%</span>
+        </div>
+      )}
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginTop: 14 }}>
+        <input type="checkbox" checked={showResults} onChange={(e) => setShowResults(e.target.checked)} />
+        <span className="label" style={{ margin: 0 }}>Show students their result after submit</span>
+      </label>
+    </>
+  ))
+
+  const footer = (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 2px', marginTop: 4 }}>
+      <span className="label" style={{ margin: 0, color: 'var(--muted)' }}>You'll add questions after creating.</span>
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button className="btn" onClick={onCancel} style={{ padding: '10px 18px' }}>Cancel</button>
+        <button className="btn btn-primary" onClick={submit} style={{ padding: '10px 20px' }}>{submitLabel}</button>
       </div>
+    </div>
+  )
+
+  if (wide) {
+    return (
+      <div>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 22 }}>
+          <div>
+            <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-.02em', margin: '0 0 4px' }}>Create a quiz</h1>
+            <p style={{ margin: 0, fontSize: 13.5, color: 'var(--muted)' }}>Set the rules now — you'll add questions in the next step.</p>
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
+            <button className="btn" onClick={onCancel} style={{ padding: '10px 18px' }}>Cancel</button>
+            <button className="btn btn-primary" onClick={submit} style={{ padding: '10px 20px' }}>{submitLabel}</button>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 18, alignItems: 'start' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>{basics}{typesCard}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>{windowCard}{distCard}{resultsCard}</div>
+        </div>
+        {footer}
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {basics}{typesCard}{windowCard}{distCard}{resultsCard}{footer}
     </div>
   )
 }
@@ -334,7 +410,7 @@ function QuizPanel({ quiz, questions, students, assignedIds, tab, setTab, toast,
   if (editing) {
     const typesMap = Object.fromEntries(ALL_TYPES.map((t) => [t, allowedTypes.includes(t)]))
     return (
-      <div style={{ maxWidth: 380 }}>
+      <div style={{ maxWidth: 460 }}>
         <h2 style={{ fontSize: 26, fontWeight: 800, margin: '0 0 12px' }}>Edit quiz</h2>
         <QuizForm initial={{ ...quiz, typesMap }} submitLabel="SAVE CHANGES" onCancel={() => setEditing(false)}
           onSubmit={async (vals) => {

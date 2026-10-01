@@ -1064,10 +1064,10 @@ function RosterTab({ quiz, toast }) {
     for (const line of lines) {
       const cols = line.split(/[,\t]/).map((c) => c.trim())
       if (out.length === 0 && /^(name|student|id|email)$/i.test(cols[0]) && line.toLowerCase().includes('id')) continue
-      let name = cols[0] || '', sid = cols[1] || '', email = cols[2] || ''
+      let name = cols[0] || '', sid = cols[1] || ''
       if (cols.length === 1) { sid = cols[0]; name = '' }
       if (!sid) continue
-      out.push({ name, student_id_txt: sid, email })
+      out.push({ name, student_id_txt: sid })
     }
     return out
   }
@@ -1079,7 +1079,7 @@ function RosterTab({ quiz, toast }) {
     for (const pr of parsed) { const k = pr.student_id_txt.toLowerCase(); if (seen.has(k)) continue; seen.add(k); uniq.push(pr) }
     setBusy(true)
     await supabase.from('roster').delete().eq('quiz_id', quiz.id)
-    const payload = uniq.map((pr) => ({ quiz_id: quiz.id, name: pr.name || null, email: pr.email || null, student_id_txt: pr.student_id_txt }))
+    const payload = uniq.map((pr) => ({ quiz_id: quiz.id, name: pr.name || null, student_id_txt: pr.student_id_txt }))
     const { error } = await supabase.from('roster').insert(payload)
     setBusy(false)
     if (error) { toast(error.message, 'err'); return }
@@ -1104,9 +1104,9 @@ function RosterTab({ quiz, toast }) {
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="label" style={{ marginBottom: 6 }}>Class roster</div>
         <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0 0 12px', lineHeight: 1.5 }}>
-          Upload your class list to restrict this quiz to only these students. One per line: <b>name, student ID, email</b> (student ID required; email is used for result emails). Saving replaces the current roster. Leave it empty to let anyone with the link register.
+          Upload your class list to restrict this quiz to only these students. One per line: <b>name, student ID</b> (student ID required). Students enter their own email when they take the quiz. Saving replaces the current roster. Leave it empty to let anyone with the link register.
         </p>
-        <textarea className="field" style={{ minHeight: 110, fontSize: 13 }} placeholder={'Ayesha Khan, K21-3391, ayesha@uni.edu\nBilal Ahmed, K21-3404, bilal@uni.edu'} value={text} onChange={(e) => setText(e.target.value)} />
+        <textarea className="field" style={{ minHeight: 110, fontSize: 13 }} placeholder={'Ayesha Khan, K21-3391\nBilal Ahmed, K21-3404'} value={text} onChange={(e) => setText(e.target.value)} />
         <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
           <button className="btn btn-primary" disabled={busy} onClick={() => save(text)}>{busy ? 'Saving…' : 'Save roster'}</button>
           <label className="btn" style={{ cursor: 'pointer' }}>Upload CSV<input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFile} style={{ display: 'none' }} /></label>
@@ -1121,13 +1121,12 @@ function RosterTab({ quiz, toast }) {
         {rows.length > 0 && (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
-              <thead><tr>{['Name', 'Student ID', 'Email', ''].map((h) => <th key={h} className="label" style={{ textAlign: 'left', padding: '8px 16px', borderTop: '1px solid var(--line)', borderBottom: '1px solid var(--line)' }}>{h}</th>)}</tr></thead>
+              <thead><tr>{['Name', 'Student ID', ''].map((h) => <th key={h} className="label" style={{ textAlign: 'left', padding: '8px 16px', borderTop: '1px solid var(--line)', borderBottom: '1px solid var(--line)' }}>{h}</th>)}</tr></thead>
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.id} style={{ borderBottom: '1px solid var(--line)' }}>
                     <td style={{ padding: '10px 16px' }}>{r.name || '—'}</td>
                     <td style={{ padding: '10px 16px', fontWeight: 600 }}>{r.student_id_txt}</td>
-                    <td style={{ padding: '10px 16px', color: 'var(--muted)' }}>{r.email || '—'}</td>
                     <td style={{ padding: '10px 16px', textAlign: 'right' }}><button className="btn btn-sm" onClick={() => removeRow(r.id)}>Remove</button></td>
                   </tr>
                 ))}

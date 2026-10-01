@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase, rpc } from '../lib/supabase'
 import { LANGS } from '../lib/languages'
 import CodeEditor from '../components/CodeEditor'
+import Locky from '../components/Locky'
 
 const ALL_TYPES = ['mcq', 'truefalse', 'text', 'code']
 const TYPE_LABEL = { mcq: 'MCQ', truefalse: 'TRUE/FALSE', text: 'TEXT', code: 'CODE' }
@@ -66,6 +67,54 @@ function csvToQuestions(text) {
     out.push({ type, prompt, options, correct_key, code_lang, points })
   }
   return { ok: out, bad }
+}
+
+function WelcomeEmpty({ onCreate }) {
+  return (
+    <div style={{ minHeight: '68vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '20px' }}>
+      <div style={{ position: 'relative', marginBottom: 8 }}>
+        <div style={{ position: 'absolute', left: '50%', top: '54%', transform: 'translate(-50%,-50%)', width: 240, height: 240, borderRadius: '50%', background: 'radial-gradient(circle, rgba(229,50,45,.09), transparent 66%)' }}></div>
+        <div style={{ position: 'absolute', top: 2, left: 'calc(50% + 74px)', background: 'var(--ink)', color: '#fff', fontSize: 12.5, fontWeight: 600, padding: '9px 13px', borderRadius: '12px 12px 12px 3px', whiteSpace: 'nowrap', boxShadow: '0 10px 26px rgba(0,0,0,.18)' }}>Hi! I'm Locky — let's make your first quiz.</div>
+        <Locky mood="idle" size={168} follow style={{ position: 'relative' }} />
+      </div>
+      <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-.02em', margin: '10px 0 8px' }}>Let's make your first quiz</h1>
+      <p style={{ fontSize: 14.5, color: 'var(--muted)', lineHeight: 1.55, maxWidth: 400, margin: '0 0 22px' }}>It only takes a minute. You put it together, hand your students one link, and their scores land right here.</p>
+      <button className="btn btn-primary" style={{ padding: '13px 26px', fontSize: 15 }} onClick={onCreate}>Make my first quiz</button>
+      <div style={{ display: 'flex', gap: 10, marginTop: 24, flexWrap: 'wrap', justifyContent: 'center' }}>
+        {['Make it', 'Share the link', 'See who passed'].map((t, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 9, background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 999, padding: '8px 14px' }}>
+            <span style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--ink)', color: '#fff', fontSize: 11, fontWeight: 700, display: 'grid', placeItems: 'center' }}>{i + 1}</span>
+            <span className="label" style={{ margin: 0 }}>{t}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+const COACH_TIPS = {
+  questions: "This is where your questions go. Add them one at a time, or upload a file if you've already written them down.",
+  results: "Once your students start, you'll see who's finished, who passed, and their recordings — all right here.",
+  roster: "Drop your class list here and only those students can get in. Everyone else stays locked out.",
+}
+function CoachTip({ id }) {
+  const [show, setShow] = useState(false)
+  useEffect(() => {
+    let seen = false
+    try { seen = localStorage.getItem('locky_tip_' + id) === '1' } catch (e) { seen = false }
+    setShow(!seen && !!COACH_TIPS[id])
+  }, [id])
+  if (!show) return null
+  function dismiss() { try { localStorage.setItem('locky_tip_' + id, '1') } catch (e) {} setShow(false) }
+  return (
+    <div style={{ position: 'fixed', right: 22, bottom: 22, zIndex: 90, display: 'flex', alignItems: 'flex-end', gap: 8, maxWidth: 380 }}>
+      <div style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: '14px 14px 4px 14px', boxShadow: 'var(--shadow)', padding: '13px 15px' }}>
+        <div style={{ fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.5 }}>{COACH_TIPS[id]}</div>
+        <button className="btn btn-sm" style={{ marginTop: 10 }} onClick={dismiss}>Got it</button>
+      </div>
+      <Locky mood="idle" size={64} />
+    </div>
+  )
 }
 
 export default function TeacherDashboard() {
@@ -156,7 +205,9 @@ export default function TeacherDashboard() {
         </div>
 
         <div style={{ flex: 1, padding: 32, overflowY: 'auto' }}>
-          {!active && <p style={{ color: 'var(--muted)' }}>Select a quiz, or create a new one.</p>}
+          {!active && (quizzes.length === 0
+            ? <WelcomeEmpty onCreate={() => { setCreating(true); setActive(null) }} />
+            : <p style={{ color: 'var(--muted)' }}>Pick a quiz on the left, or start a new one.</p>)}
           {active && loading && <p style={{ color: 'var(--muted)' }}>Loading…</p>}
           {active && !loading && (
             <QuizPanel
@@ -759,6 +810,7 @@ function QuizPanel({ quiz, questions, students, assignedIds, tab, setTab, toast,
         ? <ResultsTab quiz={quiz} students={students} questions={questions} toast={toast} onChange={onChange} onQuizChange={onQuizChange} />
         : <RosterTab quiz={quiz} toast={toast} />}
       {editing && <EditDrawer quiz={quiz} toast={toast} onClose={() => setEditing(false)} onSaved={(data) => { setEditing(false); onQuizChange(data); toast('Quiz updated') }} />}
+      <CoachTip id={tab} />
     </div>
   )
 }

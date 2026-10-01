@@ -328,11 +328,11 @@ function QuizForm({ initial, submitLabel, onSubmit, onCancel, wide }) {
     <div style={{ display: 'grid', gridTemplateColumns: wide ? '1fr 1fr' : '1fr', gap: 14 }}>
       <div>
         <label className="label">Opens at</label>
-        <input className="field" type="datetime-local" value={openAt} onChange={(e) => setOpenAt(e.target.value)} style={{ marginTop: 4 }} />
+        <input className="field" type="datetime-local" value={openAt} onChange={(e) => setOpenAt(e.target.value)} style={{ marginTop: 4, width: '100%', fontFamily: 'inherit', fontSize: 14, height: 46, colorScheme: 'light' }} />
       </div>
       <div>
         <label className="label">Closes at</label>
-        <input className="field" type="datetime-local" value={closeAt} onChange={(e) => setCloseAt(e.target.value)} style={{ marginTop: 4 }} />
+        <input className="field" type="datetime-local" value={closeAt} onChange={(e) => setCloseAt(e.target.value)} style={{ marginTop: 4, width: '100%', fontFamily: 'inherit', fontSize: 14, height: 46, colorScheme: 'light' }} />
       </div>
     </div>
   ), 'optional')
@@ -618,8 +618,8 @@ function CreateWizard({ teacherId, onCancel, onCreated, toast }) {
                 <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Pick a start and end window.</div>
                 {schedule && (
                   <div style={{ display: 'flex', gap: 10, marginTop: 10 }} onClick={(e) => e.stopPropagation()}>
-                    <div style={{ flex: 1 }}><label className="label">Opens</label><input className="field" type="datetime-local" value={openAt} onChange={(e) => setOpenAt(e.target.value)} style={{ marginTop: 4 }} /></div>
-                    <div style={{ flex: 1 }}><label className="label">Closes</label><input className="field" type="datetime-local" value={closeAt} onChange={(e) => setCloseAt(e.target.value)} style={{ marginTop: 4 }} /></div>
+                    <div style={{ flex: 1 }}><label className="label">Opens</label><input className="field" type="datetime-local" value={openAt} onChange={(e) => setOpenAt(e.target.value)} style={{ marginTop: 4, width: '100%', fontFamily: 'inherit', fontSize: 14, height: 46, colorScheme: 'light' }} /></div>
+                    <div style={{ flex: 1 }}><label className="label">Closes</label><input className="field" type="datetime-local" value={closeAt} onChange={(e) => setCloseAt(e.target.value)} style={{ marginTop: 4, width: '100%', fontFamily: 'inherit', fontSize: 14, height: 46, colorScheme: 'light' }} /></div>
                   </div>
                 )}
               </div>

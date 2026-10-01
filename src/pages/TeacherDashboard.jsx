@@ -1147,6 +1147,90 @@ function recFlags(s) {
   )
 }
 
+// --- roster parsing: auto-detect which column is the student ID vs the name ---
+let _xlsxPromise = null
+function loadXLSX() {
+  if (typeof window !== 'undefined' && window.XLSX) return Promise.resolve(window.XLSX)
+  if (_xlsxPromise) return _xlsxPromise
+  _xlsxPromise = new Promise((resolve, reject) => {
+    const sc = document.createElement('script')
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
+    sc.onload = () => resolve(window.XLSX)
+    sc.onerror = () => reject(new Error('could not load the Excel reader'))
+    document.head.appendChild(sc)
+  })
+  return _xlsxPromise
+}
+
+function idScore(v) {
+  v = String(v == null ? '' : v).trim()
+  if (!v) return -1
+  let s = 0
+  if (/\d/.test(v)) s += 2
+  if (/[-/]/.test(v)) s += 1
+  if (!/\s/.test(v)) s += 1
+  else s -= 1
+  if (v.length <= 15) s += 1
+  return s
+}
+
+// matrix = array of rows, each an array of cell values. Returns [{name, student_id_txt}].
+function detectRoster(matrix) {
+  let m = (matrix || [])
+    .map((r) => (r || []).map((c) => (c == null ? '' : String(c)).trim()))
+    .filter((r) => r.some((c) => c !== ''))
+  if (!m.length) return []
+
+  const hdr = m[0]
+  const looksHeader =
+    hdr.some((c) => /^(student\s*name|name|student\s*id|student|id|roll\s*n?o?\.?|reg(istration)?\s*n?o?\.?|email)$/i.test(c)) &&
+    !hdr.some((c) => /\d{2,}/.test(c))
+  let idCol = -1, nameCol = -1
+  if (looksHeader) {
+    hdr.forEach((c, i) => {
+      if (idCol < 0 && /\b(id|roll|reg|registration)\b/i.test(c)) idCol = i
+      if (nameCol < 0 && /name/i.test(c) && !/\bid\b/i.test(c)) nameCol = i
+    })
+    m = m.slice(1)
+  }
+  if (!m.length) return []
+  const ncols = Math.max(...m.map((r) => r.length))
+
+  if (idCol < 0) {
+    let best = -1, bestScore = -Infinity
+    for (let i = 0; i < ncols; i++) {
+      let sum = 0, cnt = 0
+      m.forEach((r) => { if (r[i]) { sum += idScore(r[i]); cnt++ } })
+      const avg = cnt ? sum / cnt : -Infinity
+      if (avg > bestScore) { bestScore = avg; best = i }
+    }
+    idCol = best < 0 ? 0 : best
+  }
+  if (nameCol < 0) {
+    let best = -1, bestScore = -Infinity
+    for (let i = 0; i < ncols; i++) {
+      if (i === idCol) continue
+      let sum = 0, cnt = 0
+      m.forEach((r) => {
+        const v = r[i]
+        if (v != null && v !== '') { sum += (/\s/.test(v) ? 2 : 0) + (/[A-Za-z]/.test(v) ? 1 : 0) - (/\d/.test(v) ? 1 : 0); cnt++ }
+      })
+      const avg = cnt ? sum / cnt : -Infinity
+      if (avg > bestScore) { bestScore = avg; best = i }
+    }
+    nameCol = best
+  }
+
+  const out = []
+  for (const r of m) {
+    const sid = (r[idCol] || '').trim()
+    if (!sid) continue
+    const name = nameCol >= 0 ? (r[nameCol] || '').trim() : ''
+    out.push({ name, student_id_txt: sid })
+  }
+  return out
+}
+
 function RosterTab({ quiz, toast }) {
   const [rows, setRows] = useState([])
   const [text, setText] = useState('')
@@ -1160,22 +1244,12 @@ function RosterTab({ quiz, toast }) {
   useEffect(() => { load() }, [quiz.id]) // eslint-disable-line
 
   function parse(raw) {
-    const out = []
-    const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
-    for (const line of lines) {
-      const cols = line.split(/[,\t]/).map((c) => c.trim())
-      if (out.length === 0 && /^(name|student|id|email)$/i.test(cols[0]) && line.toLowerCase().includes('id')) continue
-      let name = cols[0] || '', sid = cols[1] || ''
-      if (cols.length === 1) { sid = cols[0]; name = '' }
-      if (!sid) continue
-      out.push({ name, student_id_txt: sid })
-    }
-    return out
+    const matrix = raw.split(/\r?\n/).map((l) => l.split(/[,\t]/))
+    return detectRoster(matrix)
   }
 
-  async function save(raw) {
-    const parsed = parse(raw)
-    if (!parsed.length) { toast('No rows found. Use: name, student ID, email — one per line.', 'err'); return }
+  async function saveParsed(parsed) {
+    if (!parsed.length) { toast('No rows found. One student per line: name and student ID (any order).', 'err'); return }
     const seen = new Set(); const uniq = []
     for (const pr of parsed) { const k = pr.student_id_txt.toLowerCase(); if (seen.has(k)) continue; seen.add(k); uniq.push(pr) }
     setBusy(true)
@@ -1186,12 +1260,26 @@ function RosterTab({ quiz, toast }) {
     if (error) { toast(error.message, 'err'); return }
     setText(''); await load(); toast(`Roster saved — ${uniq.length} student(s)`)
   }
+  async function save(raw) { return saveParsed(parse(raw)) }
 
-  function onFile(e) {
+  async function onFile(e) {
     const f = e.target.files?.[0]; if (!f) return
-    const r = new FileReader()
-    r.onload = () => save(String(r.result || ''))
-    r.readAsText(f); e.target.value = ''
+    e.target.value = ''
+    const fn = (f.name || '').toLowerCase()
+    if (fn.endsWith('.xlsx') || fn.endsWith('.xls')) {
+      try {
+        const XLSX = await loadXLSX()
+        const buf = await f.arrayBuffer()
+        const wb = XLSX.read(buf, { type: 'array' })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const matrix = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false, defval: '' })
+        await saveParsed(detectRoster(matrix))
+      } catch (err) { toast('Could not read that Excel file: ' + (err.message || err), 'err') }
+    } else {
+      const r = new FileReader()
+      r.onload = () => save(String(r.result || ''))
+      r.readAsText(f)
+    }
   }
 
   async function removeRow(id) { await supabase.from('roster').delete().eq('id', id); load() }
@@ -1205,12 +1293,12 @@ function RosterTab({ quiz, toast }) {
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="label" style={{ marginBottom: 6 }}>Class roster</div>
         <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0 0 12px', lineHeight: 1.5 }}>
-          Upload your class list to restrict this quiz to only these students. One per line: <b>name, student ID</b> (student ID required). Students enter their own email when they take the quiz. Saving replaces the current roster. Leave it empty to let anyone with the link register.
+          Upload your class list to restrict this quiz to only these students. Paste one student per line, or upload a <b>CSV or Excel</b> file — name and student ID in any order (I detect which is which). Student ID is required; students enter their own email when they take the quiz. Saving replaces the current roster. Leave it empty to let anyone with the link register.
         </p>
         <textarea className="field" style={{ minHeight: 110, fontSize: 13 }} placeholder={'Ayesha Khan, K21-3391\nBilal Ahmed, K21-3404'} value={text} onChange={(e) => setText(e.target.value)} />
         <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
           <button className="btn btn-primary" disabled={busy} onClick={() => save(text)}>{busy ? 'Saving…' : 'Save roster'}</button>
-          <label className="btn" style={{ cursor: 'pointer' }}>Upload CSV<input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFile} style={{ display: 'none' }} /></label>
+          <label className="btn" style={{ cursor: 'pointer' }}>Upload CSV / Excel<input ref={fileRef} type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={onFile} style={{ display: 'none' }} /></label>
         </div>
       </div>
 

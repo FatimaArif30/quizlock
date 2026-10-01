@@ -156,17 +156,9 @@ export default function TeacherDashboard() {
         </div>
 
         <div style={{ flex: 1, padding: 32, overflowY: 'auto' }}>
-          {creating && (
-            <QuizForm initial={{}} wide submitLabel="Create quiz" onCancel={() => setCreating(false)}
-              onSubmit={async (vals) => {
-                const { error } = await supabase.from('quizzes').insert({ teacher_id: user.id, ...vals })
-                if (error) { showToast(error.message, 'err'); return }
-                setCreating(false); await loadQuizzes(); showToast('Quiz created')
-              }} />
-          )}
-          {!creating && !active && <p style={{ color: 'var(--muted)' }}>Select a quiz, or create a new one.</p>}
-          {!creating && active && loading && <p style={{ color: 'var(--muted)' }}>Loading…</p>}
-          {!creating && active && !loading && (
+          {!active && <p style={{ color: 'var(--muted)' }}>Select a quiz, or create a new one.</p>}
+          {active && loading && <p style={{ color: 'var(--muted)' }}>Loading…</p>}
+          {active && !loading && (
             <QuizPanel
               quiz={active} questions={questions} students={students} assignedIds={assignedIds}
               tab={tab} setTab={setTab} toast={showToast} onChange={refreshActive}
@@ -177,6 +169,11 @@ export default function TeacherDashboard() {
         </div>
       </div>
 
+      {creating && (
+        <CreateWizard teacherId={user.id} toast={showToast}
+          onCancel={() => setCreating(false)}
+          onCreated={async (q) => { setCreating(false); await loadQuizzes(); if (q) openQuiz(q); showToast('Quiz created') }} />
+      )}
       {toast && <div className={`toast ${toast.kind}`} role="status">{toast.text}</div>}
     </div>
   )
@@ -371,6 +368,319 @@ function QuizForm({ initial, submitLabel, onSubmit, onCancel, wide }) {
   )
 }
 
+// ---------- Create Quiz WIZARD (full-screen, live preview) ----------
+const WLABEL = { mcq: 'Multiple choice', truefalse: 'True / False', text: 'Short answer', code: 'Code' }
+
+function CreateWizard({ teacherId, onCancel, onCreated, toast }) {
+  const [step, setStep] = useState(0)
+  const [busy, setBusy] = useState(false)
+  const [title, setTitle] = useState('')
+  const [dur, setDur] = useState(60)
+  const [types, setTypes] = useState({ mcq: true, truefalse: true, text: false, code: false })
+  const [dist, setDist] = useState('same')
+  const [nStu, setNStu] = useState(30)
+  const [perStu, setPerStu] = useState(10)
+  const [schedule, setSchedule] = useState(false)
+  const [openAt, setOpenAt] = useState('')
+  const [closeAt, setCloseAt] = useState('')
+  const [passOn, setPassOn] = useState(true)
+  const [passScore, setPassScore] = useState(50)
+  const [showResults, setShowResults] = useState(false)
+
+  const chosen = ALL_TYPES.filter((t) => types[t])
+
+  async function doCreate() {
+    if (!title.trim()) { setStep(0); return }
+    if (!chosen.length) { setStep(1); toast('Pick at least one question type.', 'err'); return }
+    const DEFP = { mcq: 1, truefalse: 1, text: 2, code: 5 }
+    const vals = {
+      title: title.trim(),
+      num_students: dist === 'unique' ? (parseInt(nStu) || 1) : 30,
+      questions_per_student: dist === 'unique' ? (parseInt(perStu) || 10) : 10,
+      duration_minutes: parseInt(dur) || 30,
+      unique_questions: dist === 'unique',
+      allowed_types: chosen,
+      pass_score: passOn ? (parseInt(passScore) || 0) : null,
+      show_results: showResults,
+      opens_at: schedule && openAt ? new Date(openAt).toISOString() : null,
+      closes_at: schedule && closeAt ? new Date(closeAt).toISOString() : null,
+      type_points: Object.fromEntries(chosen.map((t) => [t, DEFP[t] || 1])),
+    }
+    setBusy(true)
+    const { data, error } = await supabase.from('quizzes').insert({ teacher_id: teacherId, ...vals }).select().single()
+    setBusy(false)
+    if (error) { toast(error.message, 'err'); return }
+    setCreated(data)
+    setStep(3)
+  }
+  const [created, setCreated] = useState(null)
+
+  function next() {
+    if (step === 0 && !title.trim()) return
+    if (step === 2) { doCreate(); return }
+    if (step === 3) { onCreated(created); return }
+    setStep(Math.min(3, step + 1))
+  }
+
+  const tick = (i) => (step >= 3 ? 'done' : i < step ? 'done' : i === step ? 'active' : '')
+
+  return (
+    <div className="cw-root">
+      <style>{`
+        .cw-root{position:fixed;inset:0;z-index:120;background:var(--bg);display:grid;grid-template-columns:1fr 0.8fr;animation:cwIn .22s ease}
+        @keyframes cwIn{from{opacity:0}to{opacity:1}}
+        .cw-left{display:flex;flex-direction:column;padding:26px clamp(22px,4vw,56px) 26px;overflow-y:auto}
+        .cw-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px}
+        .cw-cancel{background:none;border:0;font-family:inherit;font-size:13px;color:var(--muted);cursor:pointer;font-weight:500}
+        .cw-cancel:hover{color:var(--ink)}
+        .cw-ticks{display:flex;gap:7px;max-width:220px;margin-bottom:26px}
+        .cw-tk{height:4px;flex:1;border-radius:999px;background:var(--track);transition:.35s}
+        .cw-tk.done{background:var(--ink)}.cw-tk.active{background:var(--accent)}
+        .cw-body{flex:1;max-width:460px}
+        .cw-sn{font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600}
+        .cw-h{font-size:clamp(22px,2.6vw,29px);font-weight:800;letter-spacing:-.02em;line-height:1.18;margin:0 0 9px}
+        .cw-h em{font-style:normal;color:var(--accent)}
+        .cw-sub{font-size:14px;color:var(--muted);line-height:1.55;margin:0 0 24px}
+        .cw-chips{display:flex;gap:9px;flex-wrap:wrap}
+        .cw-chip{border:1px solid var(--line);background:#fcfbf8;border-radius:999px;padding:9px 15px;font-size:13px;font-weight:600;color:var(--ink-2);cursor:pointer}
+        .cw-chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+        .cw-seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fcfbf8}
+        .cw-seg button{flex:1;border:0;background:transparent;font-family:inherit;font-size:12.5px;font-weight:600;color:var(--ink-2);padding:11px 10px;cursor:pointer}
+        .cw-seg button.on{background:var(--ink);color:#fff}
+        .cw-opt{display:flex;align-items:flex-start;gap:12px;border:1px solid var(--line);border-radius:10px;padding:13px 14px;margin-bottom:12px;background:#fcfbf8;cursor:pointer}
+        .cw-sw{width:38px;height:22px;border-radius:999px;background:var(--track);position:relative;flex:none;transition:.15s;margin-top:1px}
+        .cw-sw:after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:.15s}
+        .cw-opt.on .cw-sw{background:var(--accent)}.cw-opt.on .cw-sw:after{left:18px}
+        .cw-nav{display:flex;align-items:center;gap:12px;margin-top:26px}
+        .cw-nav .sp{flex:1}
+        .cw-right{position:relative;overflow:hidden;background:var(--ink);display:flex;align-items:center;justify-content:center;padding:36px}
+        .cw-right:before{content:"";position:absolute;inset:0;background:radial-gradient(520px 360px at 72% 18%,rgba(229,50,45,.22),transparent 60%),radial-gradient(460px 420px at 20% 95%,rgba(229,50,45,.10),transparent 60%)}
+        .cw-dots{position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.055) 1.1px,transparent 1.1px);background-size:22px 22px;-webkit-mask-image:linear-gradient(to bottom,#000,transparent 86%);mask-image:linear-gradient(to bottom,#000,transparent 86%)}
+        .cw-plabel{position:absolute;top:24px;left:28px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.4);font-weight:600}
+        .cw-stage{position:relative;width:100%;max-width:360px}
+        .cw-card{background:#fff;border-radius:18px;box-shadow:0 30px 60px rgba(0,0,0,.4);padding:22px;transition:.3s}
+        .cw-ct{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+        .cw-title{font-size:19px;font-weight:800;letter-spacing:-.02em;line-height:1.2}
+        .cw-title.e{color:#c9c6bd}
+        .cw-time{flex:none;background:var(--accent);color:#fff;font-weight:700;font-size:12px;padding:5px 11px;border-radius:999px;white-space:nowrap}
+        .cw-by{font-size:12px;color:var(--muted);margin-top:4px}
+        .cw-div{height:1px;background:var(--line);margin:15px 0}
+        .cw-sl{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:9px}
+        .cw-tp{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+        .cw-tpc{font-size:11px;font-weight:600;background:#f1efe8;color:var(--ink-2);border-radius:999px;padding:4px 10px}
+        .cw-q{border:1px solid var(--line);border-radius:10px;padding:11px 12px}
+        .cw-qn{font-size:12.5px;font-weight:700;margin-bottom:8px}
+        .cw-o{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--ink-2);padding:3px 0}
+        .cw-bub{width:13px;height:13px;border-radius:50%;border:1.5px solid var(--line)}
+        .cw-bub.s{border-color:var(--accent);background:radial-gradient(circle,var(--accent) 42%,transparent 46%)}
+        .cw-rl{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-2);margin-top:7px}
+        .cw-rl .ic{color:var(--accent);font-weight:800}
+        .cw-share{display:flex;align-items:center;gap:8px;background:#f7f6f1;border:1px dashed var(--line);border-radius:9px;padding:9px 11px;font-size:11.5px;color:var(--muted);margin-top:10px}
+        .cw-share b{color:var(--ink)}
+        .cw-float{position:absolute;background:#fff;border-radius:12px;box-shadow:0 18px 40px rgba(0,0,0,.35);padding:10px 13px;display:flex;align-items:center;gap:9px;font-size:12px;font-weight:600}
+        .cw-float.a{right:-14px;top:-22px}
+        .cw-float.a .av{width:24px;height:24px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;font-size:11px;font-weight:700}
+        .cw-float.b{left:-18px;bottom:-16px;color:var(--good)}
+        .cw-float.b .cc{width:22px;height:22px;border-radius:50%;background:var(--good);color:#fff;display:grid;place-items:center;font-weight:800}
+        @media(max-width:880px){.cw-root{grid-template-columns:1fr}.cw-right{display:none}}
+      `}</style>
+
+      <div className="cw-left">
+        <div className="cw-top">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            <span style={{ width: 22, height: 22, borderRadius: 7, background: 'var(--ink)', position: 'relative', display: 'inline-block' }}><span style={{ position: 'absolute', inset: 6, borderRadius: 3, background: 'var(--accent)' }}></span></span>
+            <span style={{ fontWeight: 800, fontSize: 15 }}>QuizLock</span>
+          </div>
+          <button className="cw-cancel" onClick={onCancel}>✕ Cancel</button>
+        </div>
+
+        <div className="cw-ticks">
+          <div className={`cw-tk ${tick(0)}`}></div><div className={`cw-tk ${tick(1)}`}></div><div className={`cw-tk ${tick(2)}`}></div>
+        </div>
+
+        <div className="cw-body">
+          {step === 0 && (<>
+            <div className="cw-sn">Step 1 of 3</div>
+            <h1 className="cw-h">Let's set up your <em>quiz</em>.</h1>
+            <p className="cw-sub">Give it a name and decide how long students get. You can change any of this later.</p>
+            <div style={{ marginBottom: 20 }}>
+              <label className="label">Quiz name</label>
+              <input className="field" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Data Structures — Midterm" style={{ marginTop: 6 }} />
+            </div>
+            <div style={{ maxWidth: 200 }}>
+              <label className="label">Time limit (minutes)</label>
+              <input className="field" type="number" min={1} value={dur} onChange={(e) => setDur(e.target.value)} style={{ marginTop: 6 }} />
+            </div>
+          </>)}
+
+          {step === 1 && (<>
+            <div className="cw-sn">Step 2 of 3</div>
+            <h1 className="cw-h">What kind of <em>questions</em>?</h1>
+            <p className="cw-sub">Pick the question types this quiz can include. You'll write the actual questions next.</p>
+            <div className="cw-chips" style={{ marginBottom: 22 }}>
+              {ALL_TYPES.map((t) => (
+                <button key={t} className={`cw-chip ${types[t] ? 'on' : ''}`} onClick={() => setTypes({ ...types, [t]: !types[t] })}>{WLABEL[t]} {types[t] ? '✓' : ''}</button>
+              ))}
+            </div>
+            <label className="label">How should questions be given out?</label>
+            <div className="cw-seg" style={{ margin: '6px 0 8px' }}>
+              <button className={dist === 'same' ? 'on' : ''} onClick={() => setDist('same')}>Same for everyone</button>
+              <button className={dist === 'unique' ? 'on' : ''} onClick={() => setDist('unique')}>A unique set per student</button>
+            </div>
+            <p className="cw-sub" style={{ fontSize: 12.5, margin: '0 0 8px' }}>
+              {dist === 'unique' ? 'Each student gets a random set — add a bigger pool of questions.' : 'Everyone sees the same questions (order is shuffled per student).'}
+            </p>
+            {dist === 'unique' && (
+              <div style={{ display: 'flex', gap: 14 }}>
+                <div style={{ flex: 1 }}><label className="label">How many students?</label><input className="field" type="number" min={1} value={nStu} onChange={(e) => setNStu(e.target.value)} style={{ marginTop: 6 }} /></div>
+                <div style={{ flex: 1 }}><label className="label">Questions per student</label><input className="field" type="number" min={1} value={perStu} onChange={(e) => setPerStu(e.target.value)} style={{ marginTop: 6 }} /></div>
+              </div>
+            )}
+          </>)}
+
+          {step === 2 && (<>
+            <div className="cw-sn">Step 3 of 3 · all optional</div>
+            <h1 className="cw-h">Any extra <em>rules</em>?</h1>
+            <p className="cw-sub">Most teachers skip this and use the defaults. Turn on only what you need.</p>
+            <div className={`cw-opt ${passOn ? 'on' : ''}`} onClick={() => setPassOn(!passOn)}>
+              <div className="cw-sw"></div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700 }}>Set a passing mark</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Mark students pass or fail.</div>
+                {passOn && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }} onClick={(e) => e.stopPropagation()}>
+                    <span className="label" style={{ margin: 0 }}>Pass at</span>
+                    <input className="field" type="number" min={0} max={100} value={passScore} onChange={(e) => setPassScore(e.target.value)} style={{ width: 80 }} />
+                    <span className="label" style={{ margin: 0 }}>%</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className={`cw-opt ${showResults ? 'on' : ''}`} onClick={() => setShowResults(!showResults)}>
+              <div className="cw-sw"></div>
+              <div><div style={{ fontSize: 13.5, fontWeight: 700 }}>Show students their score</div><div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Right after they submit.</div></div>
+            </div>
+            <div className={`cw-opt ${schedule ? 'on' : ''}`} onClick={() => setSchedule(!schedule)}>
+              <div className="cw-sw"></div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700 }}>Open only at a set time</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Pick a start and end window.</div>
+                {schedule && (
+                  <div style={{ display: 'flex', gap: 10, marginTop: 10 }} onClick={(e) => e.stopPropagation()}>
+                    <div style={{ flex: 1 }}><label className="label">Opens</label><input className="field" type="datetime-local" value={openAt} onChange={(e) => setOpenAt(e.target.value)} style={{ marginTop: 4 }} /></div>
+                    <div style={{ flex: 1 }}><label className="label">Closes</label><input className="field" type="datetime-local" value={closeAt} onChange={(e) => setCloseAt(e.target.value)} style={{ marginTop: 4 }} /></div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>)}
+
+          {step === 3 && (<>
+            <div className="cw-sn">&nbsp;</div>
+            <h1 className="cw-h">Your quiz is <em>ready</em>.</h1>
+            <p className="cw-sub">Next, add your questions — then share the link with your students. That's it.</p>
+          </>)}
+
+          <div className="cw-nav">
+            {step > 0 && step < 3 && <button className="btn btn-ghost" onClick={() => setStep(step - 1)}>← Back</button>}
+            {step === 2 && <button className="btn btn-ghost" onClick={doCreate} disabled={busy}>Skip, use defaults</button>}
+            <div className="sp"></div>
+            <button className="btn btn-primary" onClick={next} disabled={busy}>
+              {busy ? 'Creating…' : step === 2 ? 'Create quiz →' : step === 3 ? 'Add questions →' : 'Continue →'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <aside className="cw-right">
+        <div className="cw-dots"></div>
+        <div className="cw-plabel">{step >= 3 ? 'Created ✓' : 'Live preview'}</div>
+        <div className="cw-stage">
+          <div className="cw-card">
+            <div className="cw-ct">
+              <div>
+                <div className={`cw-title ${title.trim() ? '' : 'e'}`}>{title.trim() || 'Untitled quiz'}</div>
+                <div className="cw-by">by you</div>
+              </div>
+              <div className="cw-time">{(parseInt(dur) || 0)} min</div>
+            </div>
+
+            {step >= 1 && (<>
+              <div className="cw-div"></div>
+              <div className="cw-sl">Questions</div>
+              <div className="cw-tp">
+                {chosen.length ? chosen.map((t) => <span key={t} className="cw-tpc">{WLABEL[t]}</span>) : <span className="cw-tpc" style={{ color: '#c9c6bd' }}>pick a type…</span>}
+              </div>
+              <div className="cw-q">
+                <div className="cw-qn">1. Which structure uses FIFO order?</div>
+                <div className="cw-o"><span className="cw-bub"></span>Stack</div>
+                <div className="cw-o"><span className="cw-bub s"></span>Queue</div>
+                <div className="cw-o"><span className="cw-bub"></span>Tree</div>
+              </div>
+              <div className="cw-rl" style={{ color: 'var(--muted)', fontSize: 11.5 }}>{dist === 'unique' ? '⤭ Each student gets a different set' : '⇉ Same questions for everyone'}</div>
+            </>)}
+
+            {step >= 2 && (<>
+              <div className="cw-div"></div>
+              <div className="cw-sl">Rules</div>
+              {passOn && <div className="cw-rl"><span className="ic">✓</span>Passing mark: {parseInt(passScore) || 0}%</div>}
+              {showResults && <div className="cw-rl"><span className="ic">✓</span>Students see their score on submit</div>}
+              {schedule && <div className="cw-rl"><span className="ic">✓</span>Opens at a scheduled time</div>}
+              {!passOn && !showResults && !schedule && <div className="cw-rl" style={{ color: 'var(--muted)' }}>Using the defaults</div>}
+            </>)}
+
+            {step >= 3 && (
+              <div className="cw-share"><span>🔗</span><b>quizlock.app/go/8F2K</b><span style={{ marginLeft: 'auto' }}>Share</span></div>
+            )}
+          </div>
+
+          <div className="cw-float a"><span className="av">{dist === 'unique' ? (parseInt(nStu) || 0) : '∞'}</span>{dist === 'unique' ? 'students' : 'open to all'}</div>
+          {step >= 3 && <div className="cw-float b"><span className="cc">✓</span>Ready to share</div>}
+        </div>
+      </aside>
+    </div>
+  )
+}
+
+// ---------- Edit quiz DETAILS drawer (slide-over) ----------
+function EditDrawer({ quiz, onClose, onSaved, toast }) {
+  const allowedTypes = (quiz.allowed_types && quiz.allowed_types.length) ? quiz.allowed_types : ALL_TYPES
+  const typesMap = Object.fromEntries(ALL_TYPES.map((t) => [t, allowedTypes.includes(t)]))
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey); return () => document.removeEventListener('keydown', onKey)
+  }, []) // eslint-disable-line
+  return (
+    <div className="ed-root" onClick={onClose}>
+      <style>{`
+        .ed-root{position:fixed;inset:0;z-index:110;background:rgba(19,19,17,.5);display:flex;justify-content:flex-end;animation:edFade .2s ease}
+        @keyframes edFade{from{opacity:0}to{opacity:1}}
+        .ed-panel{width:560px;max-width:94vw;height:100%;background:var(--bg);box-shadow:-20px 0 50px rgba(0,0,0,.25);display:flex;flex-direction:column;animation:edSlide .26s cubic-bezier(.2,.8,.2,1)}
+        @keyframes edSlide{from{transform:translateX(40px);opacity:.6}to{transform:none;opacity:1}}
+        .ed-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:20px 24px;border-bottom:1px solid var(--line);background:var(--card)}
+        .ed-head h2{margin:0;font-size:18px;font-weight:800;letter-spacing:-.02em}
+        .ed-head p{margin:3px 0 0;font-size:12.5px;color:var(--muted)}
+        .ed-x{background:none;border:0;font-size:18px;color:var(--muted);cursor:pointer;line-height:1}
+        .ed-body{flex:1;overflow-y:auto;padding:22px 24px}
+      `}</style>
+      <div className="ed-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="ed-head">
+          <div><h2>Quiz settings</h2><p>{quiz.title}</p></div>
+          <button className="ed-x" onClick={onClose}>✕</button>
+        </div>
+        <div className="ed-body">
+          <QuizForm initial={{ ...quiz, typesMap }} submitLabel="Save changes" onCancel={onClose}
+            onSubmit={async (vals) => {
+              const { data, error } = await supabase.from('quizzes').update(vals).eq('id', quiz.id).select().single()
+              if (error) { toast(error.message, 'err'); return }
+              onSaved(data)
+            }} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function NewQuiz({ onCreated, teacherId, toast }) {
   const [open, setOpen] = useState(false)
   if (!open) return <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => setOpen(true)}>+ NEW QUIZ</button>
@@ -407,21 +717,6 @@ function QuizPanel({ quiz, questions, students, assignedIds, tab, setTab, toast,
     toast('Quiz deleted'); onDeleted()
   }
 
-  if (editing) {
-    const typesMap = Object.fromEntries(ALL_TYPES.map((t) => [t, allowedTypes.includes(t)]))
-    return (
-      <div style={{ maxWidth: 460 }}>
-        <h2 style={{ fontSize: 26, fontWeight: 800, margin: '0 0 12px' }}>Edit quiz</h2>
-        <QuizForm initial={{ ...quiz, typesMap }} submitLabel="SAVE CHANGES" onCancel={() => setEditing(false)}
-          onSubmit={async (vals) => {
-            const { data, error } = await supabase.from('quizzes').update(vals).eq('id', quiz.id).select().single()
-            if (error) { toast(error.message, 'err'); return }
-            setEditing(false); onQuizChange(data); toast('Quiz updated')
-          }} />
-      </div>
-    )
-  }
-
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
@@ -434,7 +729,7 @@ function QuizPanel({ quiz, questions, students, assignedIds, tab, setTab, toast,
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn" onClick={() => setEditing(true)}>EDIT</button>
+          <button className="btn" onClick={() => setEditing(true)}>Edit details</button>
           <button className="btn" onClick={toggleOpen}
             style={{ background: quiz.is_open ? '#1f9d55' : '#fff', color: quiz.is_open ? '#fff' : '#131311', borderColor: quiz.is_open ? '#1f9d55' : '#131311' }}>
             {quiz.is_open ? 'OPEN ✓' : 'CLOSED'}
@@ -463,6 +758,7 @@ function QuizPanel({ quiz, questions, students, assignedIds, tab, setTab, toast,
         : tab === 'results'
         ? <ResultsTab quiz={quiz} students={students} questions={questions} toast={toast} onChange={onChange} onQuizChange={onQuizChange} />
         : <RosterTab quiz={quiz} toast={toast} />}
+      {editing && <EditDrawer quiz={quiz} toast={toast} onClose={() => setEditing(false)} onSaved={(data) => { setEditing(false); onQuizChange(data); toast('Quiz updated') }} />}
     </div>
   )
 }

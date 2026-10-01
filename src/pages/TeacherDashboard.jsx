@@ -763,6 +763,17 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
   const [sel, setSel] = useState(null)
   const [stats, setStats] = useState(null)
   const [q, setQ] = useState('')
+  const [roster, setRoster] = useState([])
+
+  // load the uploaded roster (for attendance: who hasn't attempted)
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      const { data } = await supabase.from('roster').select('id,name,student_id_txt').eq('quiz_id', quiz.id)
+      if (alive) setRoster(data || [])
+    })()
+    return () => { alive = false }
+  }, [quiz.id, students.length])
 
   // analytics: summary tiles from students; hardest questions from answers
   useEffect(() => {
@@ -807,8 +818,9 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
     catch (e) { toast(e.message, 'err') }
   }
   const badge = (s) => {
+    const LBL = { submitted: 'Submitted', in_progress: 'In progress', blocked: 'Blocked', not_attempted: 'Not attempted', not_started: 'Not started', registered: 'Registered' }
     const cls = s.status === 'submitted' ? 'good' : s.status === 'in_progress' ? 'warn' : s.status === 'blocked' ? 'bad' : 'neutral'
-    const txt = s.status === 'in_progress' ? 'In progress' : s.status.charAt(0).toUpperCase() + s.status.slice(1)
+    const txt = LBL[s.status] || (s.status.charAt(0).toUpperCase() + s.status.slice(1))
     return <span className={`chip ${cls}`}><span className="led"></span>{txt}</span>
   }
   const tile = (label, val) => (
@@ -826,7 +838,16 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
   const gaugeP = stats?.passRate != null ? stats.passRate : (stats?.avgPct != null ? stats.avgPct : 0)
   const gaugeHas = stats?.passRate != null || stats?.avgPct != null
   const needGrade = new Set(stats?.needGrade || [])
-  const shown = students.filter((s) => {
+  const hasRoster = roster.length > 0
+  const seen = new Set(students.map((s) => (s.student_id_txt || '').toLowerCase()))
+  const notAttempted = hasRoster
+    ? roster
+        .filter((r) => !seen.has((r.student_id_txt || '').toLowerCase()))
+        .map((r) => ({ id: `roster-${r.id}`, name: r.name || '(no name)', student_id_txt: r.student_id_txt, email: '', status: 'not_attempted', score: null, total_points: null, warnings: 0, _synthetic: true }))
+    : []
+  const allRows = [...students, ...notAttempted]
+  const rosterTotal = hasRoster ? roster.length : quiz.num_students
+  const shown = allRows.filter((s) => {
     const t = q.trim().toLowerCase()
     if (!t) return true
     return (s.name || '').toLowerCase().includes(t) || (s.student_id_txt || '').toLowerCase().includes(t) || (s.email || '').toLowerCase().includes(t)
@@ -837,7 +858,7 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
       {/* summary */}
       {stats && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 18 }}>
-          {tile('Submitted', `${stats.submitted}/${quiz.num_students}`)}
+          {tile('Submitted', `${stats.submitted}/${rosterTotal}`)}
           {tile('Average', stats.avgPct != null ? `${stats.avgPct}%` : '—')}
           {tile('Pass rate', stats.passRate != null ? `${stats.passRate}%` : '—')}
           {tile('Avg time', stats.avgMin != null ? `${stats.avgMin}m` : '—')}
@@ -880,13 +901,13 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
         <input className="field" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name or student ID…" style={{ maxWidth: 300 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span className="label">{q.trim() ? `${shown.length} of ${students.length}` : `${students.length} student(s)`} · auto-updates</span>
+          <span className="label">{q.trim() ? `${shown.length} of ${allRows.length}` : hasRoster ? `${students.length}/${rosterTotal} attempted` : `${students.length} student(s)`} · auto-updates</span>
           <button className="btn" style={{ padding: '8px 14px' }} onClick={onChange}>↻ Refresh</button>
         </div>
       </div>
 
-      {!students.length
-        ? <p style={{ color: '#757064' }}>No students have started yet.</p>
+      {!allRows.length
+        ? <p style={{ color: '#757064' }}>{hasRoster ? 'Roster is empty.' : 'No students have started yet.'}</p>
         : (
           <div className="card" style={{ overflowX: 'auto', padding: '4px 8px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
@@ -910,8 +931,12 @@ function ResultsTab({ quiz, students, questions, toast, onChange }) {
                     <td style={{ padding: '12px 8px', fontFamily: 'inherit' }}>{s.score != null ? `${s.score}/${s.total_points}` : '—'}</td>
                     <td style={{ padding: '12px 8px', fontFamily: 'inherit', color: s.warnings ? '#e5322d' : '#757064' }}>{s.warnings}</td>
                     <td style={{ padding: '12px 8px', whiteSpace: 'nowrap' }}>
-                      <button className="btn btn-primary" style={{ padding: '6px 12px', marginRight: 6 }} onClick={() => setSel(s)}>VIEW</button>
-                      <button className="btn" style={{ padding: '6px 12px' }} onClick={() => reallow(s)}>RE-ALLOW</button>
+                      {s._synthetic
+                        ? <span className="label" style={{ color: '#757064' }}>—</span>
+                        : (<>
+                            <button className="btn btn-primary" style={{ padding: '6px 12px', marginRight: 6 }} onClick={() => setSel(s)}>VIEW</button>
+                            <button className="btn" style={{ padding: '6px 12px' }} onClick={() => reallow(s)}>RE-ALLOW</button>
+                          </>)}
                     </td>
                   </tr>
                 ))}

@@ -35,19 +35,15 @@ Deno.serve(async (req) => {
     const { data: teacher } = await admin.auth.admin.getUserById(quiz.teacher_id)
     const teacherEmail = teacher?.user?.email
 
-    // Bucket is private — create signed links (valid 30 days) from the stored paths.
-    const sign = async (path: string | null) => {
-      if (!path) return null
-      const { data } = await admin.storage.from('recordings').createSignedUrl(path, 60 * 60 * 24 * 30)
-      return data?.signedUrl ?? null
-    }
-    const camUrl = await sign(student.camera_url)
-    const scrUrl = await sign(student.screen_url)
+    // Bucket is private — create signed links (valid 7 days) from the stored paths.
+    const camUrls = await signRecording(admin, student.camera_url)
+    const scrUrls = await signRecording(admin, student.screen_url)
+    const hasLinks = camUrls.length > 0 || scrUrls.length > 0
 
-    const links = [
-      camUrl ? `<p>Camera recording: <a href="${camUrl}">watch</a></p>` : '',
-      scrUrl ? `<p>Screen recording: <a href="${scrUrl}">watch</a></p>` : '',
-    ].join('')
+    const links = hasLinks
+      ? linkLine('Camera recording', camUrls) + linkLine('Screen recording', scrUrls) +
+        `<p style="color:#67625a;font-size:12px">Recording links work for 7 days.</p>`
+      : ''
 
     const scoreLine = student.score != null
       ? `<p><b>Score:</b> ${student.score} / ${student.total_points}</p>` : ''
@@ -56,7 +52,7 @@ Deno.serve(async (req) => {
       <div style="font-family:sans-serif">
         <h2>Your QuizLock submission</h2>
         <p>Quiz: <b>${quiz.title}</b></p>
-        <p>Hi ${student.name}, your quiz was submitted. Your recording is linked below.</p>
+        <p>Hi ${student.name}, your quiz was submitted.${hasLinks ? ' Your recording is linked below.' : ''}</p>
         ${links}
       </div>`
 
@@ -89,6 +85,39 @@ Deno.serve(async (req) => {
     return json({ error: String(e) }, 500)
   }
 })
+
+// How long emailed recording links stay valid.
+const LINK_TTL_SECONDS = 60 * 60 * 24 * 7 // 7 days
+
+// A stored recording value is either a single older file ("…/camera-123.webm")
+// or, since live segmented recording, a folder of ~45-second clips
+// ("<studentId>/<attemptId>/camera"). Returns signed links in playback order,
+// or [] if nothing was uploaded.
+// deno-lint-ignore no-explicit-any
+async function signRecording(admin: any, stored: string | null): Promise<string[]> {
+  if (!stored) return []
+  const bucket = admin.storage.from('recordings')
+  if (/\.webm$/i.test(stored)) {
+    const { data } = await bucket.createSignedUrl(stored, LINK_TTL_SECONDS)
+    return data?.signedUrl ? [data.signedUrl] : []
+  }
+  const { data: files } = await bucket.list(stored, { limit: 1000, sortBy: { column: 'name', order: 'asc' } })
+  const paths = (files || [])
+    .filter((f: { name: string }) => /\.webm$/i.test(f.name))
+    .map((f: { name: string }) => `${stored}/${f.name}`)
+    .sort()
+  if (!paths.length) return []
+  const { data: signed } = await bucket.createSignedUrls(paths, LINK_TTL_SECONDS)
+  return (signed || []).map((s: { signedUrl: string | null }) => s.signedUrl).filter(Boolean) as string[]
+}
+
+// One line per stream: a single "watch" link, or numbered parts in order.
+function linkLine(label: string, urls: string[]): string {
+  if (!urls.length) return ''
+  if (urls.length === 1) return `<p>${label}: <a href="${urls[0]}">watch</a></p>`
+  const parts = urls.map((u, i) => `<a href="${u}">${i + 1}</a>`).join(' · ')
+  return `<p>${label} — ${urls.length} parts of about 45 seconds each, watch in order: ${parts}</p>`
+}
 
 async function sendEmail(to: string, subject: string, html: string): Promise<string | null> {
   try {

@@ -10,14 +10,14 @@
   --card:#ffffff;
   --ink:#131311;       /* primary text + primary data fill */
   --ink-2:#3a3833;     /* secondary ink */
-  --muted:#77726a;     /* labels, captions */
+  --muted:#67625a;     /* labels, captions */
   --track:#e9e7df;     /* bar tracks / empty gauge */
   --line:#e6e4dc;      /* hairlines */
-  --accent:#e5322d;    /* RED — brand pop + primary action only */
+  --accent:#d92d28;    /* RED — brand pop + primary action only */
   --accent-dk:#c72620;
-  --good:#1f9d55; --good-bg:#e7f4ec;
+  --good:#198048; --good-bg:#e7f4ec;
   --warn:#c4791b; --warn-bg:#f8efdf;
-  --bad:#e5322d;  --bad-bg:#fbe9e8;
+  --bad:#d92d28;  --bad-bg:#fbe9e8;
   --r:16px; --r-sm:10px;
   --shadow:0 1px 2px rgba(19,19,17,.04), 0 10px 26px rgba(19,19,17,.05);
   --font:'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;

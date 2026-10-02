@@ -179,8 +179,9 @@ export default function TeacherDashboard() {
 
   return (
     <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
+      <h1 style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap', border: 0 }}>Teacher dashboard</h1>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 28px', borderBottom: '1px solid var(--line)', background: 'var(--card)', position: 'sticky', top: 0, zIndex: 5 }}>
-        <span style={{ fontWeight: 800, fontSize: 20 }}>QUIZLOCK<span style={{ color: '#e5322d' }}>.</span></span>
+        <span style={{ fontWeight: 800, fontSize: 20 }}>QUIZLOCK<span style={{ color: '#d92d28' }}>.</span></span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <span className="label">{user.email}</span>
           <button className="btn" onClick={logout} style={{ padding: '10px 16px' }}>LOG OUT</button>
@@ -201,7 +202,7 @@ export default function TeacherDashboard() {
               </div>
             </button>
           ))}
-          {!quizzes.length && <p style={{ fontSize: 13, color: '#757064' }}>No quizzes yet — create one above.</p>}
+          {!quizzes.length && <p style={{ fontSize: 13, color: '#67625a' }}>No quizzes yet — create one above.</p>}
         </div>
 
         <div style={{ flex: 1, padding: 32, overflowY: 'auto' }}>
@@ -281,17 +282,17 @@ function QuizForm({ initial, submitLabel, onSubmit, onCancel, wide }) {
       <div style={{ display: 'grid', gridTemplateColumns: uniqueQ ? '1fr 1fr 1fr' : '1fr 1fr', gap: 14 }}>
         <div>
           <label className="label">How many students?</label>
-          <input className="field" type="number" min={1} value={nStu} onChange={(e) => setNStu(e.target.value)} style={{ marginTop: 4 }} />
+          <input className="field" type="number" aria-label="Number of students" min={1} value={nStu} onChange={(e) => setNStu(e.target.value)} style={{ marginTop: 4 }} />
         </div>
         {uniqueQ && (
           <div>
             <label className="label">Questions per student</label>
-            <input className="field" type="number" min={1} value={perStu} onChange={(e) => setPerStu(e.target.value)} style={{ marginTop: 4 }} />
+            <input className="field" type="number" aria-label="Questions per student" min={1} value={perStu} onChange={(e) => setPerStu(e.target.value)} style={{ marginTop: 4 }} />
           </div>
         )}
         <div>
           <label className="label">Time limit (min)</label>
-          <input className="field" type="number" min={1} value={dur} onChange={(e) => setDur(e.target.value)} style={{ marginTop: 4 }} />
+          <input className="field" type="number" aria-label="Time limit in minutes" min={1} value={dur} onChange={(e) => setDur(e.target.value)} style={{ marginTop: 4 }} />
         </div>
       </div>
     </>
@@ -314,7 +315,7 @@ function QuizForm({ initial, submitLabel, onSubmit, onCancel, wide }) {
             {chosen.map((t) => (
               <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span className="label" style={{ margin: 0, width: 92 }}>{TYPE_LABEL[t]}</span>
-                <input className="field" type="number" min={1} value={typePts[t] ?? 1} onChange={(e) => setTypePts({ ...typePts, [t]: e.target.value })} style={{ width: 80 }} />
+                <input className="field" type="number" aria-label="Marks for this question type" min={1} value={typePts[t] ?? 1} onChange={(e) => setTypePts({ ...typePts, [t]: e.target.value })} style={{ width: 80 }} />
                 <span className="label" style={{ margin: 0 }}>marks</span>
               </div>
             ))}
@@ -369,7 +370,7 @@ function QuizForm({ initial, submitLabel, onSubmit, onCancel, wide }) {
       {passOn && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 0 0' }}>
           <span className="label" style={{ margin: 0 }}>Pass at</span>
-          <input className="field" type="number" min={0} max={100} value={passScore} onChange={(e) => setPassScore(e.target.value)} style={{ width: 90 }} />
+          <input className="field" type="number" aria-label="Pass score, percent" min={0} max={100} value={passScore} onChange={(e) => setPassScore(e.target.value)} style={{ width: 90 }} />
           <span className="label" style={{ margin: 0 }}>%</span>
         </div>
       )}
@@ -560,7 +561,7 @@ function CreateWizard({ teacherId, onCancel, onCreated, toast }) {
             </div>
             <div style={{ maxWidth: 200 }}>
               <label className="label">Time limit (minutes)</label>
-              <input className="field" type="number" min={1} value={dur} onChange={(e) => setDur(e.target.value)} style={{ marginTop: 6 }} />
+              <input className="field" type="number" aria-label="Time limit in minutes" min={1} value={dur} onChange={(e) => setDur(e.target.value)} style={{ marginTop: 6 }} />
             </div>
           </>)}
 
@@ -583,8 +584,8 @@ function CreateWizard({ teacherId, onCancel, onCreated, toast }) {
             </p>
             {dist === 'unique' && (
               <div style={{ display: 'flex', gap: 14 }}>
-                <div style={{ flex: 1 }}><label className="label">How many students?</label><input className="field" type="number" min={1} value={nStu} onChange={(e) => setNStu(e.target.value)} style={{ marginTop: 6 }} /></div>
-                <div style={{ flex: 1 }}><label className="label">Questions per student</label><input className="field" type="number" min={1} value={perStu} onChange={(e) => setPerStu(e.target.value)} style={{ marginTop: 6 }} /></div>
+                <div style={{ flex: 1 }}><label className="label">How many students?</label><input className="field" type="number" aria-label="Number of students" min={1} value={nStu} onChange={(e) => setNStu(e.target.value)} style={{ marginTop: 6 }} /></div>
+                <div style={{ flex: 1 }}><label className="label">Questions per student</label><input className="field" type="number" aria-label="Questions per student" min={1} value={perStu} onChange={(e) => setPerStu(e.target.value)} style={{ marginTop: 6 }} /></div>
               </div>
             )}
           </>)}
@@ -601,7 +602,7 @@ function CreateWizard({ teacherId, onCancel, onCreated, toast }) {
                 {passOn && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }} onClick={(e) => e.stopPropagation()}>
                     <span className="label" style={{ margin: 0 }}>Pass at</span>
-                    <input className="field" type="number" min={0} max={100} value={passScore} onChange={(e) => setPassScore(e.target.value)} style={{ width: 80 }} />
+                    <input className="field" type="number" aria-label="Pass score, percent" min={0} max={100} value={passScore} onChange={(e) => setPassScore(e.target.value)} style={{ width: 80 }} />
                     <span className="label" style={{ margin: 0 }}>%</span>
                   </div>
                 )}
@@ -782,10 +783,10 @@ function QuizPanel({ quiz, questions, students, assignedIds, tab, setTab, toast,
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn" onClick={() => setEditing(true)}>Edit details</button>
           <button className="btn" onClick={toggleOpen}
-            style={{ background: quiz.is_open ? '#1f9d55' : '#fff', color: quiz.is_open ? '#fff' : '#131311', borderColor: quiz.is_open ? '#1f9d55' : '#131311' }}>
+            style={{ background: quiz.is_open ? '#198048' : '#fff', color: quiz.is_open ? '#fff' : '#131311', borderColor: quiz.is_open ? '#198048' : '#131311' }}>
             {quiz.is_open ? 'OPEN ✓' : 'CLOSED'}
           </button>
-          <button className="btn" onClick={del} style={{ color: '#e5322d', borderColor: '#e5322d' }}>DELETE</button>
+          <button className="btn" onClick={del} style={{ color: '#d92d28', borderColor: '#d92d28' }}>DELETE</button>
         </div>
       </div>
 
@@ -837,7 +838,7 @@ function QuestionsTab({ quiz, questions, needed, allowedTypes, assignedIds, toas
 
   return (
     <div>
-      <div style={{ background: enough ? '#e6f6ee' : '#fdf0ef', border: `2px solid ${enough ? '#1f9d55' : '#e5322d'}`, padding: 14, marginBottom: 22, fontFamily: 'inherit', fontSize: 13 }}>
+      <div style={{ background: enough ? '#e6f6ee' : '#fdf0ef', border: `2px solid ${enough ? '#198048' : '#d92d28'}`, padding: 14, marginBottom: 22, fontFamily: 'inherit', fontSize: 13 }}>
         {quiz.unique_questions
           ? (enough
               ? `✓ Enough questions. Every student gets a unique set of ${quiz.questions_per_student}.`
@@ -859,18 +860,18 @@ function QuestionsTab({ quiz, questions, needed, allowedTypes, assignedIds, toas
           <div key={q.id} style={{ border: '1px solid var(--line)', padding: 16, marginBottom: 10, background: '#fff', display: 'flex', justifyContent: 'space-between', gap: 16 }}>
             <div>
               <span style={{ fontFamily: 'inherit', fontSize: 11, background: '#131311', color: '#fff', padding: '2px 7px', marginRight: 8 }}>{TYPE_LABEL[q.type] || q.type.toUpperCase()}</span>
-              {locked && <span style={{ fontFamily: 'inherit', fontSize: 11, background: '#c9781f', color: '#fff', padding: '2px 7px', marginRight: 8 }}>LOCKED</span>}
+              {locked && <span style={{ fontFamily: 'inherit', fontSize: 11, background: '#9c5d17', color: '#fff', padding: '2px 7px', marginRight: 8 }}>LOCKED</span>}
               <span style={{ fontWeight: 600 }}>{i + 1}. {q.prompt}</span>
               {q.type === 'mcq' && (
-                <div style={{ fontFamily: 'inherit', fontSize: 12, color: '#757064', marginTop: 6 }}>
+                <div style={{ fontFamily: 'inherit', fontSize: 12, color: '#67625a', marginTop: 6 }}>
                   {(q.options || []).map((o) => `${o.key}) ${o.text}`).join('   ')} · correct: <b>{q.correct_key}</b>
                 </div>
               )}
               {q.type === 'truefalse' && (
-                <div style={{ fontFamily: 'inherit', fontSize: 12, color: '#757064', marginTop: 6 }}>True / False · correct: <b>{q.correct_key}</b></div>
+                <div style={{ fontFamily: 'inherit', fontSize: 12, color: '#67625a', marginTop: 6 }}>True / False · correct: <b>{q.correct_key}</b></div>
               )}
               {q.type === 'code' && (
-                <div style={{ fontFamily: 'inherit', fontSize: 12, color: '#757064', marginTop: 6 }}>Code · language: <b>{(LANGS.find((l) => l.monaco === q.code_lang) || {}).label || q.code_lang || 'Python'}</b></div>
+                <div style={{ fontFamily: 'inherit', fontSize: 12, color: '#67625a', marginTop: 6 }}>Code · language: <b>{(LANGS.find((l) => l.monaco === q.code_lang) || {}).label || q.code_lang || 'Python'}</b></div>
               )}
             </div>
             <div style={{ position: 'relative' }}>
@@ -882,7 +883,7 @@ function QuestionsTab({ quiz, questions, needed, allowedTypes, assignedIds, toas
                     ['Duplicate', () => duplicate(q)],
                     ['Delete', () => del(q)]].map(([label, fn]) => (
                     <button key={label} onClick={fn}
-                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 14px', border: 'none', borderBottom: '1px solid var(--line)', background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: label === 'Delete' ? '#e5322d' : '#131311' }}>
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 14px', border: 'none', borderBottom: '1px solid var(--line)', background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: label === 'Delete' ? '#d92d28' : '#131311' }}>
                       {label}{locked && label !== 'Duplicate' ? ' 🔒' : ''}
                     </button>
                   ))}
@@ -961,7 +962,7 @@ function QuestionEditor({ question, allowedTypes, toast, onClose, onSaved }) {
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span className="label">Points</span>
-          <input className="field" type="number" min={1} value={points} onChange={(e) => setPoints(e.target.value)} style={{ width: 90 }} />
+          <input className="field" type="number" aria-label="Points" min={1} value={points} onChange={(e) => setPoints(e.target.value)} style={{ width: 90 }} />
           <button className="btn btn-primary" onClick={save} disabled={busy} style={{ marginLeft: 'auto' }}>{busy ? 'SAVING…' : 'SAVE CHANGES →'}</button>
         </div>
       </div>
@@ -997,7 +998,7 @@ function TypePicker({ types, type, setType }) {
   return (
     <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
       {types.map((t) => (
-        <button key={t} onClick={() => setType(t)} className="btn" style={{ padding: '8px 10px', fontSize: 11, background: type === t ? '#e5322d' : 'transparent', color: type === t ? '#fff' : '#131311', borderColor: type === t ? '#e5322d' : '#131311' }}>{TYPE_LABEL[t]}</button>
+        <button key={t} onClick={() => setType(t)} className="btn" style={{ padding: '8px 10px', fontSize: 11, background: type === t ? '#d92d28' : 'transparent', color: type === t ? '#fff' : '#131311', borderColor: type === t ? '#d92d28' : '#131311' }}>{TYPE_LABEL[t]}</button>
       ))}
     </div>
   )
@@ -1053,7 +1054,7 @@ function AddQuestion({ quizId, allowedTypes, typePoints, toast, onChange }) {
       ))}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
         <span className="label">Points</span>
-        <input className="field" type="number" min={1} value={points} onChange={(e) => setPoints(e.target.value)} style={{ width: 80 }} />
+        <input className="field" type="number" aria-label="Points" min={1} value={points} onChange={(e) => setPoints(e.target.value)} style={{ width: 80 }} />
         <button className="btn btn-primary" onClick={add} style={{ marginLeft: 'auto' }}>ADD →</button>
       </div>
     </div>
@@ -1093,7 +1094,7 @@ function BulkAdd({ quizId, allowedTypes, toast, onChange }) {
         CHOOSE CSV FILE
         <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFile} style={{ display: 'none' }} />
       </label>
-      <p style={{ fontSize: 12, color: '#757064', marginTop: 0 }}>
+      <p style={{ fontSize: 12, color: '#67625a', marginTop: 0 }}>
         …or paste CSV below. First row = headers: type, prompt, option_a…d, correct (A/B/C/D), points.
       </p>
       <textarea className="field" style={{ minHeight: 130, fontFamily: 'inherit', fontSize: 12 }}
@@ -1298,7 +1299,7 @@ function ResultsTab({ quiz, students, questions, toast, onChange, onQuizChange }
       </div>
 
       {!allRows.length
-        ? <p style={{ color: '#757064' }}>{hasRoster ? 'Roster is empty.' : 'No students have started yet.'}</p>
+        ? <p style={{ color: '#67625a' }}>{hasRoster ? 'Roster is empty.' : 'No students have started yet.'}</p>
         : (
           <div className="card" style={{ overflowX: 'auto', padding: '4px 8px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
@@ -1312,7 +1313,7 @@ function ResultsTab({ quiz, students, questions, toast, onChange, onQuizChange }
                   <tr key={s.id} style={{ borderBottom: '1px solid var(--line)' }}>
                     <td style={{ padding: '12px 8px' }}>
                       <div style={{ fontWeight: 700 }}>{s.name}</div>
-                      <div style={{ fontFamily: 'inherit', fontSize: 12, color: '#757064' }}>{s.student_id_txt || s.email}</div>
+                      <div style={{ fontFamily: 'inherit', fontSize: 12, color: '#67625a' }}>{s.student_id_txt || s.email}</div>
                       {recFlags(s)}
                       {s.status === 'submitted' && needGrade.has(s.id) && (
                         <div style={{ marginTop: 4 }}><span className="chip warn"><span className="led"></span>needs grading</span></div>
@@ -1325,10 +1326,10 @@ function ResultsTab({ quiz, students, questions, toast, onChange, onQuizChange }
                     </td>
                     <td style={{ padding: '12px 8px' }}>{badge(s)}</td>
                     <td style={{ padding: '12px 8px', fontFamily: 'inherit' }}>{s.score != null ? `${s.score}/${s.total_points}` : '—'}</td>
-                    <td style={{ padding: '12px 8px', fontFamily: 'inherit', color: s.warnings ? '#e5322d' : '#757064' }}>{s.warnings}</td>
+                    <td style={{ padding: '12px 8px', fontFamily: 'inherit', color: s.warnings ? '#d92d28' : '#67625a' }}>{s.warnings}</td>
                     <td style={{ padding: '12px 8px', whiteSpace: 'nowrap' }}>
                       {s._synthetic
-                        ? <span className="label" style={{ color: '#757064' }}>—</span>
+                        ? <span className="label" style={{ color: '#67625a' }}>—</span>
                         : (<>
                             <button className="btn btn-primary" style={{ padding: '6px 12px', marginRight: 6 }} onClick={() => setSel(s)}>VIEW</button>
                             {published
@@ -1348,7 +1349,7 @@ function ResultsTab({ quiz, students, questions, toast, onChange, onQuizChange }
           <div className="label" style={{ marginBottom: 8 }}>Hardest questions (lowest % correct)</div>
           {stats.hardest.map((h, i) => (
             <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--line)' }}>
-              <span style={{ fontFamily: 'inherit', fontWeight: 700, color: h.pct < 50 ? '#e5322d' : '#131311', width: 48 }}>{h.pct}%</span>
+              <span style={{ fontFamily: 'inherit', fontWeight: 700, color: h.pct < 50 ? '#d92d28' : '#131311', width: 48 }}>{h.pct}%</span>
               <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.prompt}</span>
               <span className="label">{h.n} ans</span>
             </div>
@@ -1426,7 +1427,7 @@ function StudentDetail({ student, onClose, onGraded, toast, frozen }) {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               {camUrl
                 ? <RecordingPlayer label="Camera + mic" src={camUrl} />
-                : <div className="label" style={{ color: '#e5322d', fontWeight: 700 }}>⚠ No camera recording (upload failed or was blocked)</div>}
+                : <div className="label" style={{ color: '#d92d28', fontWeight: 700 }}>⚠ No camera recording (upload failed or was blocked)</div>}
               {scrUrl
                 ? <RecordingPlayer label="Screen" src={scrUrl} />
                 : <div className="label">No screen recording</div>}
@@ -1434,10 +1435,10 @@ function StudentDetail({ student, onClose, onGraded, toast, frozen }) {
 
             <div className="label" style={{ margin: '16px 0 0' }}>
               Report email: {student.report_email_error
-                ? <span style={{ color: '#e5322d', fontWeight: 700 }}>⚠ failed ({student.report_email_error})</span>
+                ? <span style={{ color: '#d92d28', fontWeight: 700 }}>⚠ failed ({student.report_email_error})</span>
                 : student.report_emailed_at
-                  ? <span style={{ color: '#1f9d55', fontWeight: 700 }}>✓ sent</span>
-                  : <span style={{ color: '#757064' }}>— not recorded (older submission or still sending)</span>}
+                  ? <span style={{ color: '#198048', fontWeight: 700 }}>✓ sent</span>
+                  : <span style={{ color: '#67625a' }}>— not recorded (older submission or still sending)</span>}
             </div>
             <div style={{ margin: '24px 0 8px', display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
               <span className="label" style={{ margin: 0 }}>Answers</span>
@@ -1446,7 +1447,7 @@ function StudentDetail({ student, onClose, onGraded, toast, frozen }) {
                 <span className={`chip ${manualDone === manualAns.length ? 'good' : 'warn'}`} style={{ fontSize: 11 }}><span className="led"></span>{manualDone}/{manualAns.length} manual graded</span>
               )}
             </div>
-            {answers.length === 0 && <p style={{ color: '#757064' }}>No answers recorded.</p>}
+            {answers.length === 0 && <p style={{ color: '#67625a' }}>No answers recorded.</p>}
             {answers.map((a) => {
               const q = a.questions || {}
               const autoGraded = q.type === 'mcq' || q.type === 'truefalse'
@@ -1455,7 +1456,7 @@ function StudentDetail({ student, onClose, onGraded, toast, frozen }) {
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
                     <span style={{ fontFamily: 'inherit', fontSize: 11, background: '#131311', color: '#fff', padding: '2px 7px' }}>{TYPE_LABEL[q.type] || (q.type || '').toUpperCase()}</span>
                     <span style={{ fontWeight: 700 }}>{q.prompt}</span>
-                    <span style={{ marginLeft: 'auto', fontFamily: 'inherit', fontSize: 12, color: '#757064' }}>{q.points} pt</span>
+                    <span style={{ marginLeft: 'auto', fontFamily: 'inherit', fontSize: 12, color: '#67625a' }}>{q.points} pt</span>
                   </div>
                   {q.type === 'code'
                     ? <CodeEditor langId={q.code_lang} value={a.response || ''} readOnly height={220} />
@@ -1466,8 +1467,8 @@ function StudentDetail({ student, onClose, onGraded, toast, frozen }) {
                     )}
                   {autoGraded ? (
                     <div style={{ marginTop: 8, fontFamily: 'inherit', fontSize: 13 }}>
-                      {a.is_correct ? <span style={{ color: '#1f9d55' }}>✓ Correct (+{q.points})</span>
-                        : <span style={{ color: '#e5322d' }}>✗ Wrong · correct answer: {q.correct_key}</span>}
+                      {a.is_correct ? <span style={{ color: '#198048' }}>✓ Correct (+{q.points})</span>
+                        : <span style={{ color: '#d92d28' }}>✗ Wrong · correct answer: {q.correct_key}</span>}
                     </div>
                   ) : <GradeRow answer={a} maxPoints={q.points || 0} onGrade={grade} frozen={frozen} />}
                 </div>
@@ -1525,7 +1526,7 @@ function RecordingPlayer({ label, src }) {
     <div>
       <div className="label" style={{ marginBottom: 4 }}>{label}</div>
       <video ref={ref} src={src} controls style={{ width: '100%', background: '#000' }} />
-      <div style={{ fontFamily: 'inherit', fontSize: 12, color: '#757064', marginTop: 4 }}>
+      <div style={{ fontFamily: 'inherit', fontSize: 12, color: '#67625a', marginTop: 4 }}>
         {fmtTime(cur)} / {fmtTime(dur)}
       </div>
     </div>
@@ -1541,7 +1542,7 @@ function recFlags(s) {
   return (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
       {flags.map((t, i) => (
-        <span key={i} style={{ fontFamily: 'inherit', fontSize: 10, color: '#e5322d', border: '1px solid #e5322d', padding: '1px 5px' }}>{t}</span>
+        <span key={i} style={{ fontFamily: 'inherit', fontSize: 10, color: '#d92d28', border: '1px solid #d92d28', padding: '1px 5px' }}>{t}</span>
       ))}
     </div>
   )
@@ -1733,10 +1734,10 @@ function GradeRow({ answer, maxPoints, onGrade, frozen }) {
   return (
     <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
       <span className="label">Award points (0–{maxPoints})</span>
-      <input className="field" type="number" min={0} max={maxPoints} value={val} disabled={frozen} onChange={(e) => setVal(e.target.value)} style={{ width: 90 }} />
+      <input className="field" type="number" aria-label="Points to award" min={0} max={maxPoints} value={val} disabled={frozen} onChange={(e) => setVal(e.target.value)} style={{ width: 90 }} />
       <button className="btn btn-primary" style={{ padding: '8px 14px' }} disabled={frozen}
         onClick={() => onGrade(answer.id, Math.max(0, Math.min(parseFloat(val) || 0, maxPoints)))}>SAVE GRADE</button>
-      {answer.awarded != null && <span style={{ fontFamily: 'inherit', fontSize: 12, color: '#1f9d55' }}>graded: {answer.awarded}</span>}
+      {answer.awarded != null && <span style={{ fontFamily: 'inherit', fontSize: 12, color: '#198048' }}>graded: {answer.awarded}</span>}
     </div>
   )
 }

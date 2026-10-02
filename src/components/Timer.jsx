@@ -27,7 +27,7 @@ export default function Timer({ startedAt, durationMinutes, onExpire }) {
   return (
     <div
       className="font-mono font-bold text-xl px-3 py-1.5"
-      style={{ background: low ? '#e5322d' : '#131311', color: '#f2f1ec' }}
+      style={{ background: low ? '#d92d28' : '#131311', color: '#f2f1ec' }}
     >
       {mm}:{ss}
     </div>

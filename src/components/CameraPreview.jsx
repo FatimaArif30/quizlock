@@ -18,7 +18,7 @@ export default function CameraPreview({ stream, screen }) {
             playsInline
             style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }}
           />
-          <div style={{ position: 'absolute', top: 8, left: 8, display: 'flex', alignItems: 'center', gap: 5, background: '#e5322d', padding: '3px 8px' }}>
+          <div style={{ position: 'absolute', top: 8, left: 8, display: 'flex', alignItems: 'center', gap: 5, background: '#d92d28', padding: '3px 8px' }}>
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#fff', animation: 'blink 1.4s infinite' }} />
             <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 10, fontWeight: 700, color: '#fff' }}>REC</span>
           </div>

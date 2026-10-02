@@ -60,9 +60,9 @@ export default function Locky({ mood = 'idle', size = 120, follow = false, celeb
     <svg ref={ref} className={`locky ${celebrate ? 'lk-cheer' : ''} ${className}`} data-mood={celebrate ? 'happy' : mood}
       width={size} height={size} viewBox="0 0 220 230" style={style} role="img" aria-label="Locky the QuizLock mascot">
       <g className="body-g">
-        <g className="spark"><path d="M40 60 l3 8 8 3 -8 3 -3 8 -3 -8 -8 -3 8 -3z" fill="#e5322d" /></g>
+        <g className="spark"><path d="M40 60 l3 8 8 3 -8 3 -3 8 -3 -8 -8 -3 8 -3z" fill="#d92d28" /></g>
         <g className="spark" style={{ animationDelay: '.08s' }}><path d="M182 54 l2.5 7 7 2.5 -7 2.5 -2.5 7 -2.5 -7 -7 -2.5 7 -2.5z" fill="#131311" /></g>
-        <g className="spark" style={{ animationDelay: '.16s' }}><circle cx="176" cy="150" r="4" fill="#e5322d" /></g>
+        <g className="spark" style={{ animationDelay: '.16s' }}><circle cx="176" cy="150" r="4" fill="#d92d28" /></g>
 
         <path d="M74 104 V80 a36 36 0 0 1 72 0 V104" fill="none" stroke="#131311" strokeWidth="13" strokeLinecap="round" />
         <g className="armUpL"><rect x="40" y="96" width="11" height="34" rx="5.5" fill="#131311" transform="rotate(32 45 113)" /></g>
@@ -83,7 +83,7 @@ export default function Locky({ mood = 'idle', size = 120, follow = false, celeb
         <path className="m-happy" d="M92 158 q18 22 36 0 q-18 8 -36 0z" fill="#f2f1ec" />
         <circle className="m-think" cx="110" cy="166" r="5" fill="#f2f1ec" />
 
-        <circle cx="110" cy="184" r="7.5" fill="#e5322d" /><path d="M110 184 l-5.5 13 h11 z" fill="#e5322d" />
+        <circle cx="110" cy="184" r="7.5" fill="#d92d28" /><path d="M110 184 l-5.5 13 h11 z" fill="#d92d28" />
 
         <g className="armDownL"><rect x="40" y="132" width="11" height="30" rx="5.5" fill="#131311" /></g>
         <g className="armWaveR"><rect x="169" y="120" width="11" height="34" rx="5.5" fill="#131311" /><circle cx="174.5" cy="118" r="7" fill="#131311" /></g>

@@ -11,7 +11,7 @@ export default function Question({ q, value, onChange }) {
             <button key={k} role="radio" aria-checked={selected} onClick={() => onChange(k)}
               style={{ display: 'flex', alignItems: 'center', gap: 16, textAlign: 'left', padding: '20px 22px', cursor: 'pointer',
                 border: selected ? '2px solid #131311' : '1.5px solid #dddbd1', background: selected ? '#131311' : '#fff', color: selected ? '#f2f1ec' : '#131311' }}>
-              <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 15, fontWeight: 700, color: selected ? '#e5322d' : '#a5a091' }}>{selected ? '●' : '○'}</span>
+              <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 15, fontWeight: 700, color: selected ? '#d92d28' : '#a5a091' }}>{selected ? '●' : '○'}</span>
               <span style={{ fontSize: 22, fontWeight: selected ? 700 : 500 }}>{k}</span>
             </button>
           )
@@ -43,7 +43,7 @@ export default function Question({ q, value, onChange }) {
                 color: selected ? '#f2f1ec' : '#131311',
               }}
             >
-              <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 15, fontWeight: 700, width: 22, color: selected ? '#e5322d' : '#a5a091' }}>
+              <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 15, fontWeight: 700, width: 22, color: selected ? '#d92d28' : '#a5a091' }}>
                 {opt.key}
               </span>
               <span style={{ fontSize: 22, fontWeight: selected ? 700 : 500 }}>{opt.text}</span>

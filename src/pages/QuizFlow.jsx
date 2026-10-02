@@ -111,7 +111,16 @@ export default function QuizFlow() {
       setBusy(false); return
     }
     try {
-      recorder.start()
+      // Begin live segmented recording and save the storage prefixes to the
+      // student row AT ONCE — so even if this attempt crashes mid-exam, the
+      // clips already uploaded are discoverable by the teacher.
+      const prefixes = recorder.start(auth.student_id)
+      if (prefixes && (prefixes.cameraPrefix || prefixes.screenPrefix)) {
+        rpc('set_recording_urls', {
+          p_student_id: auth.student_id, p_token: auth.token,
+          p_camera: prefixes.cameraPrefix, p_screen: prefixes.screenPrefix,
+        }).catch(() => {})
+      }
       await enterFullscreen()
       const q = await rpc('get_quiz_for_student', { p_student_id: auth.student_id, p_token: auth.token })
       if (q.error) throw new Error(q.error)
@@ -141,18 +150,26 @@ export default function QuizFlow() {
       await Promise.all(Object.entries(answers).map(([qid, val]) =>
         rpc('save_answer', { p_student_id: auth.student_id, p_token: auth.token, p_question_id: qid, p_response: String(val) }).catch(() => {})
       ))
-      // LOCK + GRADE FIRST — the submission is safe even if the upload fails.
+
+      // Flush the final recording clip BEFORE locking the attempt. Clips have
+      // been uploading live throughout, so this is only the last <=45s — but it
+      // must go up while the student is still 'in_progress', because the storage
+      // policy only accepts uploads from active attempts. A 12s timeout guard
+      // means a slow or hung upload can never block the actual submission.
+      setUploadNote('Finishing your recording…')
+      try {
+        const rec = await Promise.race([
+          recorder.stop(),
+          new Promise((r) => setTimeout(() => r(null), 12000)),
+        ])
+        if (rec && rec.cameraUploaded === false) setRecWarn(true)
+      } catch (e3) { console.error('recording stop/upload failed', e3) }
+
+      // LOCK + GRADE — the submission is safe even if the upload above failed.
+      // The recording prefixes were already saved when the exam started.
+      setUploadNote('Submitting your answers…')
       res = await rpc('finish_quiz', { p_student_id: auth.student_id, p_token: auth.token, p_reason: reason })
     } catch (e2) { setErr(friendly(e2.message)) }
-
-    // Upload recording (best effort — never blocks the submission).
-    try {
-      setUploadNote('Finishing your recording…'); await recorder.stop()
-      setUploadNote('Uploading your recording… (this can take a moment)')
-      const urls = await recorder.uploadAll(auth.student_id)
-      if (!urls.ok) setRecWarn(true)
-      await rpc('set_recording_urls', { p_student_id: auth.student_id, p_token: auth.token, p_camera: urls.cameraUrl, p_screen: urls.screenUrl }).catch(() => {})
-    } catch (e3) { console.error('recording upload failed', e3) }
 
     supabase.functions.invoke('send-report-email', { body: { student_id: auth.student_id, token: auth.token } }).catch(() => {})
     sessionStorage.removeItem(`ql_${quizId}`)

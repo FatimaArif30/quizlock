@@ -760,9 +760,19 @@ function QuizPanel({ quiz, questions, students, assignedIds, tab, setTab, toast,
   async function copyLink() { await navigator.clipboard.writeText(link); toast('Link copied ✓') }
   async function del() {
     if (!window.confirm(`Delete "${quiz.title}"? This removes its questions, students, attempts and recordings. This cannot be undone.`)) return
-    // remove recording files from storage first so they aren't orphaned
+    // remove recording files from storage first so they aren't orphaned.
+    // A stored value is either a legacy single file or a segment-folder prefix;
+    // expand prefixes into their clip paths before deleting.
     const { data: sts } = await supabase.from('students').select('camera_url,screen_url').eq('quiz_id', quiz.id)
-    const paths = (sts || []).flatMap((s) => [s.camera_url, s.screen_url]).filter(Boolean)
+    const stored = (sts || []).flatMap((s) => [s.camera_url, s.screen_url]).filter(Boolean)
+    const paths = []
+    for (const v of stored) {
+      if (/\.webm$/i.test(v)) { paths.push(v); continue }
+      try {
+        const { data: files } = await supabase.storage.from('recordings').list(v, { limit: 1000 })
+        ;(files || []).forEach((f) => paths.push(`${v}/${f.name}`))
+      } catch { /* ignore */ }
+    }
     if (paths.length) { try { await supabase.storage.from('recordings').remove(paths) } catch { /* ignore */ } }
     const { error } = await supabase.from('quizzes').delete().eq('id', quiz.id)
     if (error) { toast(error.message, 'err'); return }
@@ -1365,8 +1375,8 @@ function ResultsTab({ quiz, students, questions, toast, onChange, onQuizChange }
 // ---------- Student detail (videos + answers + grading) ----------
 function StudentDetail({ student, onClose, onGraded, toast, frozen }) {
   const [answers, setAnswers] = useState([])
-  const [camUrl, setCamUrl] = useState(null)
-  const [scrUrl, setScrUrl] = useState(null)
+  const [camUrls, setCamUrls] = useState([])
+  const [scrUrls, setScrUrls] = useState([])
   const [loading, setLoading] = useState(true)
   const [score, setScore] = useState(student.score)
 
@@ -1382,14 +1392,28 @@ function StudentDetail({ student, onClose, onGraded, toast, frozen }) {
       setLoading(true)
       const { data: ans } = await supabase.from('answers')
         .select('*, questions(prompt,type,options,correct_key,points,code_lang)').eq('student_id', student.id)
-      const sign = async (path) => {
-        if (!path) return null
-        const { data } = await supabase.storage.from('recordings').createSignedUrl(path, 3600)
-        return data?.signedUrl || null
+      // A stored value is either a single legacy file ("…/camera-123.webm")
+      // or a segment-folder prefix ("<student>/<attempt>/camera"). Resolve
+      // both into an ordered list of signed clip URLs.
+      const resolve = async (stored) => {
+        if (!stored) return []
+        if (/\.webm$/i.test(stored)) {
+          const { data } = await supabase.storage.from('recordings').createSignedUrl(stored, 3600)
+          return data?.signedUrl ? [data.signedUrl] : []
+        }
+        const { data: files } = await supabase.storage.from('recordings')
+          .list(stored, { limit: 1000, sortBy: { column: 'name', order: 'asc' } })
+        const paths = (files || [])
+          .filter((f) => /\.webm$/i.test(f.name))
+          .map((f) => `${stored}/${f.name}`)
+          .sort()
+        if (!paths.length) return []
+        const { data: signed } = await supabase.storage.from('recordings').createSignedUrls(paths, 3600)
+        return (signed || []).map((s) => s.signedUrl).filter(Boolean)
       }
-      const cam = await sign(student.camera_url); const scr = await sign(student.screen_url)
+      const cam = await resolve(student.camera_url); const scr = await resolve(student.screen_url)
       if (!alive) return
-      setAnswers(ans || []); setCamUrl(cam); setScrUrl(scr); setLoading(false)
+      setAnswers(ans || []); setCamUrls(cam); setScrUrls(scr); setLoading(false)
     }
     load(); return () => { alive = false }
   }, [student.id]) // eslint-disable-line
@@ -1425,11 +1449,11 @@ function StudentDetail({ student, onClose, onGraded, toast, frozen }) {
           <>
             <div className="label" style={{ margin: '20px 0 8px' }}>Recordings (private — only you)</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              {camUrl
-                ? <RecordingPlayer label="Camera + mic" src={camUrl} />
+              {camUrls.length
+                ? <RecordingPlayer label="Camera + mic" sources={camUrls} />
                 : <div className="label" style={{ color: '#d92d28', fontWeight: 700 }}>⚠ No camera recording (upload failed or was blocked)</div>}
-              {scrUrl
-                ? <RecordingPlayer label="Screen" src={scrUrl} />
+              {scrUrls.length
+                ? <RecordingPlayer label="Screen" sources={scrUrls} />
                 : <div className="label">No screen recording</div>}
             </div>
 
@@ -1487,48 +1511,59 @@ function fmtTime(t) {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
-// Video player with a live 'elapsed / total' timer. MediaRecorder WebM files
-// carry no duration, so we nudge the browser to compute the real length.
-function RecordingPlayer({ label, src }) {
+// Plays a recording made of one or more clips back-to-back as a single
+// timeline. When a clip ends it auto-advances to the next; the numbered
+// buttons let the teacher jump to any clip. A single-clip recording (or a
+// legacy single-file one) just shows one video.
+function RecordingPlayer({ label, sources }) {
   const ref = useRef(null)
-  const [cur, setCur] = useState(0)
-  const [dur, setDur] = useState(0)
+  const [i, setI] = useState(0)
+  const n = sources.length
+  const idx = Math.min(i, Math.max(0, n - 1))
+  const src = sources[idx]
+
+  // When the current clip ends, roll on to the next one.
   useEffect(() => {
     const v = ref.current
     if (!v) return
-    let fixing = false
-    const good = (d) => isFinite(d) && !isNaN(d) && d > 0
-    const onMeta = () => {
-      if (!good(v.duration)) { fixing = true; try { v.currentTime = 1e101 } catch (_) {} }
-      else setDur(v.duration)
-    }
-    const onTime = () => {
-      if (fixing) {
-        if (good(v.duration)) setDur(v.duration)
-        fixing = false
-        try { v.currentTime = 0 } catch (_) {}
-        setCur(0)
-        return
-      }
-      setCur(v.currentTime)
-    }
-    const onDur = () => { if (good(v.duration)) setDur(v.duration) }
-    v.addEventListener('loadedmetadata', onMeta)
-    v.addEventListener('timeupdate', onTime)
-    v.addEventListener('durationchange', onDur)
-    return () => {
-      v.removeEventListener('loadedmetadata', onMeta)
-      v.removeEventListener('timeupdate', onTime)
-      v.removeEventListener('durationchange', onDur)
-    }
+    const onEnded = () => { setI((k) => (k < n - 1 ? k + 1 : k)) }
+    v.addEventListener('ended', onEnded)
+    return () => v.removeEventListener('ended', onEnded)
+  }, [n])
+
+  // Auto-play clips after the first (the teacher already pressed play on #1,
+  // so the browser allows continuing the chain). If it's blocked, the numbered
+  // buttons still work.
+  const first = useRef(true)
+  useEffect(() => {
+    const v = ref.current
+    if (!v) return
+    if (first.current) { first.current = false; return }
+    v.play().catch(() => {})
   }, [src])
+
   return (
     <div>
-      <div className="label" style={{ marginBottom: 4 }}>{label}</div>
-      <video ref={ref} src={src} controls style={{ width: '100%', background: '#000' }} />
-      <div style={{ fontFamily: 'inherit', fontSize: 12, color: '#67625a', marginTop: 4 }}>
-        {fmtTime(cur)} / {fmtTime(dur)}
+      <div className="label" style={{ marginBottom: 4 }}>
+        {label}{n > 1 ? ` · clip ${idx + 1} of ${n}` : ''}
       </div>
+      <video ref={ref} src={src} controls style={{ width: '100%', background: '#000' }} />
+      {n > 1 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>
+          {sources.map((_, k) => (
+            <button
+              key={k}
+              onClick={() => setI(k)}
+              title={`Clip ${k + 1}`}
+              style={{
+                fontFamily: 'inherit', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                padding: '2px 8px', borderRadius: 6, border: '1px solid var(--line)',
+                background: k === idx ? '#131311' : '#fff', color: k === idx ? '#fff' : '#131311',
+              }}
+            >{k + 1}</button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
